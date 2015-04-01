@@ -1,0 +1,1864 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>TncImpl.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCoverage analysis of project &quot;Tnc&quot; (powered by JaCoCo from EclEmma)</a> &gt; <a href="index.source.html" class="el_package">didroe.tnc</a> &gt; <span class="el_source">TncImpl.java</span></div><h1>TncImpl.java</h1><pre class="source lang-java linenums">/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package didroe.tnc;
+
+import java.text.Normalizer;
+import java.util.EnumSet;
+import java.util.Iterator;
+
+/**
+ *
+ * @author Did
+ */
+<span class="nc" id="L16">public class TncImpl {</span>
+
+    /**
+     * Verbosity level
+     */
+<span class="nc" id="L21">    public enum tnc_message {</span>
+
+        /**
+         * No messages
+         */
+<span class="nc" id="L26">        TNC_MSG_NONE,</span>
+        /**
+         * One line per iteration
+         */
+<span class="nc" id="L30">        TNC_MSG_ITER,</span>
+        /**
+         * Informational messages
+         */
+<span class="nc" id="L34">        TNC_MSG_INFO,</span>
+        /**
+         * Exit reasons
+         */
+<span class="nc" id="L38">        TNC_MSG_EXIT;</span>
+
+        /**
+         * @return Set of all messages
+         */
+        public static EnumSet&lt;tnc_message&gt; allMessages() {
+<span class="nc" id="L44">            EnumSet&lt;tnc_message&gt; result = EnumSet.of(TNC_MSG_ITER, TNC_MSG_INFO,</span>
+                    TNC_MSG_EXIT);
+<span class="nc" id="L46">            return result;</span>
+        }
+    }
+
+    /**
+     * Possible return values for tnc
+     */
+<span class="nc" id="L53">    public enum tnc_rc {</span>
+
+        /**
+         * Invalid parameters (n&amp;lt;0)
+         */
+<span class="nc" id="L58">        TNC_EINVAL(&quot;Invalid parameters (n&lt;0)&quot;),</span>
+        /**
+         * Infeasible (low bound &amp;gt; up bound)
+         */
+<span class="nc" id="L62">        TNC_INFEASIBLE(&quot;Infeasible (low bound &gt; up bound)&quot;),</span>
+        /**
+         * Local minima reach (|pg| ~= 0)
+         */
+<span class="nc" id="L66">        TNC_LOCALMINIMUM(&quot;Local minima reach (|pg| ~= 0)&quot;),</span>
+        /**
+         * Converged (|f_n-f_(n-1)| ~= 0)
+         */
+<span class="nc" id="L70">        TNC_FCONVERGED(&quot;Converged (|f_n-f_(n-1)| ~= 0)&quot;),</span>
+        /**
+         * Converged (|x_n-x_(n-1)| ~= 0)
+         */
+<span class="nc" id="L74">        TNC_XCONVERGED(&quot;Converged (|x_n-x_(n-1)| ~= 0)&quot;),</span>
+        /**
+         * Max. number of function evaluations reach
+         */
+<span class="nc" id="L78">        TNC_MAXFUN(&quot;Maximum number of function evaluations reached&quot;),</span>
+        /**
+         * Linear search failed
+         */
+<span class="nc" id="L82">        TNC_LSFAIL(&quot;Linear search failed&quot;),</span>
+        /**
+         * All lower bounds are equal to the upper bounds
+         */
+<span class="nc" id="L86">        TNC_CONSTANT(&quot;All lower bounds are equal to the upper bounds&quot;),</span>
+        /**
+         * Unable to progress
+         */
+<span class="nc" id="L90">        TNC_NOPROGRESS(&quot;Unable to progress&quot;),</span>
+        /**
+         * User requested end of minization
+         */
+<span class="nc" id="L94">        TNC_USERABORT(&quot;User requested end of minimization&quot;);</span>
+
+        private String message;
+
+        public String getMessage() {
+<span class="nc" id="L99">            return message;</span>
+        }
+
+<span class="nc" id="L102">        private tnc_rc(String message) {</span>
+<span class="nc" id="L103">            this.message = message;</span>
+<span class="nc" id="L104">        }</span>
+    }
+
+    /**
+     * A callback function accepting x as input parameter along with the state
+     * pointer.
+     */
+    public interface TncCallback {
+
+        public void tnc_callback(double[] x);
+    }
+
+    /**
+     * getptc return codes
+     */
+<span class="nc" id="L119">    public enum getptc_rc {</span>
+
+        /**
+         * Suitable point found
+         */
+<span class="nc" id="L124">        GETPTC_OK,</span>
+        /**
+         * Function evaluation required
+         */
+<span class="nc" id="L128">        GETPTC_EVAL,</span>
+        /**
+         * Bad input values
+         */
+<span class="nc" id="L132">        GETPTC_EINVAL,</span>
+        /**
+         * No suitable point found
+         */
+<span class="nc" id="L136">        GETPTC_FAIL;</span>
+    }
+
+    /**
+     * linearSearch return codes
+     */
+<span class="nc" id="L142">    public enum ls_rc {</span>
+
+        /**
+         * Suitable point found
+         */
+<span class="nc" id="L147">        LS_OK,</span>
+        /**
+         * Max. number of function evaluations reach
+         */
+<span class="nc" id="L151">        LS_MAXFUN,</span>
+        /**
+         * No suitable point found
+         */
+<span class="nc" id="L155">        LS_FAIL,</span>
+        /**
+         * User requested end of minimization
+         */
+<span class="nc" id="L159">        LS_USERABORT,</span>
+        /**
+         * Memory allocation failed
+         */
+<span class="nc" id="L163">        LS_ENOMEM;</span>
+    }
+
+<span class="nc" id="L166">    public static final double DBL_EPSILON = Math.ulp(1.0);</span>
+
+    /*
+     * tnc : minimize a function with variables subject to bounds, using
+     *       gradient information.
+     *
+     * n         : number of variables (must be &gt;= 0)
+     * x         : on input, initial estimate ; on output, the solution
+     * f         : on output, the function value at the solution
+     * g         : on output, the gradient value at the solution
+     *             g should be an allocated vector of size n or NULL,
+     *             in which case the gradient value is not returned.
+     * function  : the function to minimize (see tnc_function)
+     * state     : used by function (see tnc_function)
+     * low, up   : the bounds
+     *             set low[i] to Double.NEGATIVE_INFINITY to remove the lower bound
+     *             set up[i] to Double.POSITIVE_INFINITY to remove the upper bound
+     *             if low == NULL, the lower bounds are removed.
+     *             if up == NULL, the upper bounds are removed.
+     * scale     : scaling factors to apply to each variable
+     *             if NULL, the factors are up-low for interval bounded variables
+     *             and 1+|x] for the others.
+     * offset    : constant to substract to each variable
+     *             if NULL, the constant are (up+low)/2 for interval bounded
+     *             variables and x for the others.
+     * messages  : see the tnc_message enum
+     * maxCGit   : max. number of hessian*vector evaluation per main iteration
+     *             if maxCGit == 0, the direction chosen is -gradient
+     *             if maxCGit &lt; 0, maxCGit is set to max(1,min(50,n/2))
+     * maxnfeval : max. number of function evaluation
+     * eta       : severity of the line search. if &lt; 0 or &gt; 1, set to 0.25
+     * stepmx    : maximum step for the line search. may be increased during call
+     *             if too small, will be set to 10.0
+     * accuracy  : relative precision for finite difference calculations
+     *             if &lt;= machine_precision, set to sqrt(machine_precision)
+     * fmin      : minimum function value estimate
+     * ftol      : precision goal for the value of f in the stoping criterion
+     *             if ftol &lt; 0.0, ftol is set to accuracy
+     * xtol      : precision goal for the value of x in the stopping criterion
+     *             (after applying x scaling factors)
+     *             if xtol &lt; 0.0, xtol is set to sqrt(machine_precision)
+     * pgtol     : precision goal for the value of the projected gradient in the
+     *             stopping criterion (after applying x scaling factors)
+     *             if pgtol &lt; 0.0, pgtol is set to 1e-2 * sqrt(accuracy)
+     *             setting it to 0.0 is not recommended
+     * rescale   : f scaling factor (in log10) used to trigger f value rescaling
+     *             if 0, rescale at each iteration
+     *             if a big value, never rescale
+     *             if &lt; 0, rescale is set to 1.3
+     * nfeval    : on output, the number of function evaluations.
+     *             ignored if nfeval==NULL.
+     *
+     * The tnc function returns a code defined in the tnc_rc enum.
+     * On output, x, f and g may be very slightly out of sync because of scaling.
+     *
+     * This routine solves the optimization problem
+     *
+     *   minimize   f(x)
+     *     x
+     *   subject to   low &lt;= x &lt;= up
+     *
+     * where x is a vector of n real variables. The method used is
+     * a truncated-newton algorithm (see &quot;newton-type minimization via
+     * the lanczos method&quot; by s.g. nash (siam j. numer. anal. 21 (1984),
+     * pp. 770-778).  this algorithm finds a local minimum of f(x). It does
+     * not assume that the function f is convex (and so cannot guarantee a
+     * global solution), but does assume that the function is bounded below.
+     * it can solve problems having any number of variables, but it is
+     * especially useful when the number of variables (n) is large.    
+     */
+
+    public tnc_rc tnc(int n, double[] x, double[] g, TncFunction function,
+            double[] low, double[] up, double[] scale,
+            double[] offset, EnumSet&lt;tnc_message&gt; messages, int maxCGit, int maxnfeval,
+            double eta, double stepmx, double accuracy, double fmin,
+            double ftol, double xtol, double pgtol, double rescale,
+            TncCallback callback, TncRef ref) {
+        /*int rc, frc, i, nc, nfeval_local, free_low = false,
+         free_up = false, free_g = false;
+         double *xscale = NULL, fscale, rteps, *xoffset = NULL;*/
+
+<span class="nc" id="L247">        ref.nfeval = 0;</span>
+        tnc_rc rc;
+
+        cleanup:
+        {
+            /* Check for errors in the input parameters */
+<span class="nc bnc" id="L253" title="All 2 branches missed.">            if (n == 0) {</span>
+<span class="nc" id="L254">                rc = tnc_rc.TNC_CONSTANT;</span>
+<span class="nc" id="L255">                break cleanup;</span>
+            }
+
+<span class="nc bnc" id="L258" title="All 2 branches missed.">            if (n &lt; 0) {</span>
+<span class="nc" id="L259">                rc = tnc_rc.TNC_EINVAL;</span>
+<span class="nc" id="L260">                break cleanup;</span>
+            }
+
+            /* Check bounds arrays */
+<span class="nc bnc" id="L264" title="All 2 branches missed.">            if (low == null) {</span>
+<span class="nc" id="L265">                low = new double[n];</span>
+<span class="nc bnc" id="L266" title="All 2 branches missed.">                for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L267">                    low[i] = Double.NEGATIVE_INFINITY;</span>
+                }
+            }
+
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            if (up == null) {</span>
+<span class="nc" id="L272">                up = new double[n];</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">                for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L274">                    up[i] = Double.POSITIVE_INFINITY;</span>
+                }
+            }
+
+            /* Coherency check */
+<span class="nc bnc" id="L279" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">                if (low[i] &gt; up[i]) {</span>
+<span class="nc" id="L281">                    rc = tnc_rc.TNC_INFEASIBLE;</span>
+<span class="nc" id="L282">                    break cleanup;</span>
+                }
+            }
+
+            /* Coerce x into bounds */
+<span class="nc" id="L287">            ArrayMath.clip(x, low, up);</span>
+
+<span class="nc bnc" id="L289" title="All 2 branches missed.">            if (maxnfeval &lt; 1) {</span>
+<span class="nc" id="L290">                rc = tnc_rc.TNC_MAXFUN;</span>
+<span class="nc" id="L291">                break cleanup;</span>
+            }
+
+            /* Allocate g if necessary */
+<span class="nc bnc" id="L295" title="All 2 branches missed.">            if (g == null) {</span>
+<span class="nc" id="L296">                g = new double[n];</span>
+            }
+
+            /* Initial function evaluation */
+<span class="nc" id="L300">            ref.f = function.evaluate(x, g);</span>
+<span class="nc" id="L301">            ref.nfeval++;</span>
+
+            /* Constant problem ? */
+<span class="nc" id="L304">            int nc = 0;</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L306" title="All 6 branches missed.">                if ((low[i] == up[i]) || (scale != null &amp;&amp; scale[i] == 0.0)) {</span>
+<span class="nc" id="L307">                    nc++;</span>
+                }
+            }
+
+<span class="nc bnc" id="L311" title="All 2 branches missed.">            if (nc == n) {</span>
+<span class="nc" id="L312">                rc = tnc_rc.TNC_CONSTANT;</span>
+<span class="nc" id="L313">                break cleanup;</span>
+            }
+
+            /* Scaling parameters */
+<span class="nc" id="L317">            double[] xscale = new double[n];</span>
+<span class="nc" id="L318">            double[] xoffset = new double[n];</span>
+<span class="nc" id="L319">            double fscale = 1.0;</span>
+
+<span class="nc bnc" id="L321" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">                if (scale != null) {</span>
+<span class="nc" id="L323">                    xscale[i] = Math.abs(scale[i]);</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">                    if (xscale[i] == 0.0) {</span>
+<span class="nc" id="L325">                        xoffset[i] = low[i] = up[i] = x[i];</span>
+                    }
+<span class="nc bnc" id="L327" title="All 4 branches missed.">                } else if (low[i] != Double.NEGATIVE_INFINITY &amp;&amp; up[i] != Double.POSITIVE_INFINITY) {</span>
+<span class="nc" id="L328">                    xscale[i] = up[i] - low[i];</span>
+<span class="nc" id="L329">                    xoffset[i] = (up[i] + low[i]) * 0.5;</span>
+                } else {
+<span class="nc" id="L331">                    xscale[i] = 1.0 + Math.abs(x[i]);</span>
+<span class="nc" id="L332">                    xoffset[i] = x[i];</span>
+                }
+<span class="nc bnc" id="L334" title="All 2 branches missed.">                if (offset != null) {</span>
+<span class="nc" id="L335">                    xoffset[i] = offset[i];</span>
+                }
+            }
+
+            /* Default values for parameters */
+<span class="nc" id="L340">            double rteps = Math.sqrt(DBL_EPSILON);</span>
+
+<span class="nc bnc" id="L342" title="All 2 branches missed.">            if (stepmx &lt; rteps * 10.0) {</span>
+<span class="nc" id="L343">                stepmx = 1.0e1;</span>
+            }
+<span class="nc bnc" id="L345" title="All 4 branches missed.">            if (eta &lt; 0.0 || eta &gt;= 1.0) {</span>
+<span class="nc" id="L346">                eta = 0.25;</span>
+            }
+<span class="nc bnc" id="L348" title="All 2 branches missed.">            if (rescale &lt; 0) {</span>
+<span class="nc" id="L349">                rescale = 1.3;</span>
+            }
+<span class="nc bnc" id="L351" title="All 2 branches missed.">            if (maxCGit &lt; 0) {          /* maxCGit == 0 is valid */</span>
+
+<span class="nc" id="L353">                maxCGit = n / 2;</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">                if (maxCGit &lt; 1) {</span>
+<span class="nc" id="L355">                    maxCGit = 1;</span>
+<span class="nc bnc" id="L356" title="All 2 branches missed.">                } else if (maxCGit &gt; 50) {</span>
+<span class="nc" id="L357">                    maxCGit = 50;</span>
+                }
+            }
+<span class="nc bnc" id="L360" title="All 2 branches missed.">            if (maxCGit &gt; n) {</span>
+<span class="nc" id="L361">                maxCGit = n;</span>
+            }
+<span class="nc bnc" id="L363" title="All 2 branches missed.">            if (accuracy &lt;= DBL_EPSILON) {</span>
+<span class="nc" id="L364">                accuracy = rteps;</span>
+            }
+<span class="nc bnc" id="L366" title="All 2 branches missed.">            if (ftol &lt; 0.0) {</span>
+<span class="nc" id="L367">                ftol = accuracy;</span>
+            }
+<span class="nc bnc" id="L369" title="All 2 branches missed.">            if (pgtol &lt; 0.0) {</span>
+<span class="nc" id="L370">                pgtol = 1e-2 * Math.sqrt(accuracy);</span>
+            }
+<span class="nc bnc" id="L372" title="All 2 branches missed.">            if (xtol &lt; 0.0) {</span>
+<span class="nc" id="L373">                xtol = rteps;</span>
+            }
+
+            /* Optimisation */
+<span class="nc" id="L377">            tnc_minimizeRef tmpMinRef = new tnc_minimizeRef();</span>
+<span class="nc" id="L378">            tmpMinRef.f = ref.f;</span>
+<span class="nc" id="L379">            tmpMinRef.fscale = fscale;</span>
+<span class="nc" id="L380">            tmpMinRef.nfeval = ref.nfeval;</span>
+<span class="nc" id="L381">            tmpMinRef.niter = ref.niter;</span>
+<span class="nc" id="L382">            rc = tnc_minimize(n, x, g, function, xscale, xoffset, low, up,</span>
+                    messages, maxCGit, maxnfeval, eta, stepmx,
+                    accuracy, fmin, ftol, xtol, pgtol, rescale,
+                    callback, tmpMinRef);
+<span class="nc" id="L386">            ref.f = tmpMinRef.f;</span>
+<span class="nc" id="L387">            fscale = tmpMinRef.fscale;</span>
+<span class="nc" id="L388">            ref.nfeval = tmpMinRef.nfeval;</span>
+<span class="nc" id="L389">            ref.niter = tmpMinRef.niter;</span>
+        }
+<span class="nc bnc" id="L391" title="All 2 branches missed.">        if (messages.contains(tnc_message.TNC_MSG_EXIT)) {</span>
+<span class="nc" id="L392">            System.err.format(&quot;tnc: %s\n&quot;, rc.getMessage());</span>
+        }
+
+<span class="nc" id="L395">        return rc;</span>
+    }
+
+
+    /**
+     * Unscale x
+     */
+    public void unscalex(int n, double[] x, double[] xscale, double xoffset[]) {
+<span class="nc bnc" id="L403" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L404">            x[i] = x[i] * xscale[i] + xoffset[i];</span>
+        }
+<span class="nc" id="L406">    }</span>
+
+    /**
+     * Scale x
+     */
+    public void scalex(int n, double[] x, double[] xscale, double[] xoffset) {
+<span class="nc bnc" id="L412" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L413" title="All 2 branches missed.">            if (xscale[i] &gt; 0.0) {</span>
+<span class="nc" id="L414">                x[i] = (x[i] - xoffset[i]) / xscale[i];</span>
+            }
+        }
+<span class="nc" id="L417">    }</span>
+
+    /**
+     * Scale g
+     */
+    public void scaleg(int n, double[] g, double[] xscale, double fscale) {
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L424">            g[i] *= xscale[i] * fscale;</span>
+        }
+<span class="nc" id="L426">    }</span>
+
+    /**
+     * Calculate the pivot vector
+     */
+    public void setConstraints(int n, double[] x, int[] pivot, double[] xscale,
+            double[] xoffset, double[] low, double[] up) {
+<span class="nc bnc" id="L433" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+            /* tolerances should be better ajusted */
+<span class="nc bnc" id="L435" title="All 2 branches missed.">            if (xscale[i] == 0.0) {</span>
+<span class="nc" id="L436">                pivot[i] = 2;</span>
+<span class="nc bnc" id="L437" title="All 2 branches missed.">            } else if (low[i] != Double.NEGATIVE_INFINITY</span>
+                    &amp;&amp; (x[i] * xscale[i] + xoffset[i] - low[i]
+<span class="nc bnc" id="L439" title="All 2 branches missed.">                    &lt;= DBL_EPSILON * 10.0 * (Math.abs(low[i]) + 1.0))) {</span>
+<span class="nc" id="L440">                pivot[i] = -1;</span>
+<span class="nc bnc" id="L441" title="All 2 branches missed.">            } else if (up[i] != Double.POSITIVE_INFINITY</span>
+                    &amp;&amp; (x[i] * xscale[i] + xoffset[i] - up[i]
+<span class="nc bnc" id="L443" title="All 2 branches missed.">                    &gt;= DBL_EPSILON * 10.0 * (Math.abs(up[i]) + 1.0))) {</span>
+<span class="nc" id="L444">                pivot[i] = 1;</span>
+            } else {
+<span class="nc" id="L446">                pivot[i] = 0;</span>
+            }
+        }
+<span class="nc" id="L449">    }</span>
+
+<span class="nc" id="L451">    public class tnc_minimizeRef {</span>
+
+        public double f;
+        public double fscale;
+        public int nfeval;
+        public int niter;
+    }
+
+    /**
+     * This routine is a bounds-constrained truncated-newton method. the
+     * truncated-newton method is preconditioned by a limited-memory
+     * quasi-newton method (this preconditioning strategy is developed in this
+     * routine) with a further diagonal scaling (see routine diagonalscaling).
+     */
+    public tnc_rc tnc_minimize(int n, double[] x, double[] gfull,
+            TncFunction function, double[] xscale, double[] xoffset,
+            double[] low, double[] up, EnumSet&lt;tnc_message&gt; messages,
+            int maxCGit, int maxnfeval, double eta, double stepmx,
+            double accuracy, double fmin, double ftol, double xtol,
+            double pgtol, double rescale, TncCallback callback, tnc_minimizeRef ref) {
+        /*double fLastReset, difnew, epsred, oldgtp, difold, oldf, xnorm, newscale,
+         gnorm, ustpmax, fLastConstraint, spe, yrsr, yksk,
+         *temp = NULL
+         , *sk = NULL
+         , *yk = NULL
+         , *diagb = NULL
+         , *sr = NULL
+         ,
+         *yr = NULL
+         , *oldg = NULL
+         , *pk = NULL
+         , *g = NULL;*/
+<span class="nc" id="L483">        double alpha = 0.0;         /* Default unused value */</span>
+
+        /*int i, icycle, oldnfeval, *pivot = NULL, frc;
+         logical lreset, newcon, upd1, remcon;
+         tnc_rc rc = TNC_ENOMEM;     /* Default error */
+<span class="nc" id="L488">        ref.niter = 0;</span>
+
+        /* Allocate temporary vectors */
+<span class="nc" id="L491">        double[] oldg = new double[n];</span>
+<span class="nc" id="L492">        double[] g = new double[n];</span>
+<span class="nc" id="L493">        double[] temp = new double[n];</span>
+<span class="nc" id="L494">        double[] diagb = new double[n];</span>
+<span class="nc" id="L495">        double[] pk = new double[n];</span>
+<span class="nc" id="L496">        double[] sk = new double[n];</span>
+<span class="nc" id="L497">        double[] yk = new double[n];</span>
+<span class="nc" id="L498">        double[] sr = new double[n];</span>
+<span class="nc" id="L499">        double[] yr = new double[n];</span>
+<span class="nc" id="L500">        int[] pivot = new int[n];</span>
+
+        /* Initialize variables */
+<span class="nc" id="L503">        double difnew = 0.0;</span>
+<span class="nc" id="L504">        double epsred = 0.05;</span>
+<span class="nc" id="L505">        boolean upd1 = true;</span>
+<span class="nc" id="L506">        int icycle = n - 1;</span>
+<span class="nc" id="L507">        boolean newcon = true;</span>
+
+        /* Uneeded initialisations */
+<span class="nc" id="L510">        boolean lreset = false;</span>
+<span class="nc" id="L511">        double yrsr = 0.0;</span>
+<span class="nc" id="L512">        double yksk = 0.0;</span>
+
+        /* Initial scaling */
+<span class="nc" id="L515">        scalex(n, x, xscale, xoffset);</span>
+<span class="nc" id="L516">        ref.f *= ref.fscale;</span>
+
+        /* initial pivot calculation */
+<span class="nc" id="L519">        setConstraints(n, x, pivot, xscale, xoffset, low, up);</span>
+
+<span class="nc" id="L521">        ArrayMath.copy(gfull, g);</span>
+<span class="nc" id="L522">        scaleg(n, g, xscale, ref.fscale);</span>
+
+        /* Test the lagrange multipliers to see if they are non-negative. */
+<span class="nc bnc" id="L525" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L526" title="All 2 branches missed.">            if (-pivot[i] * g[i] &lt; 0.0) {</span>
+<span class="nc" id="L527">                pivot[i] = 0;</span>
+            }
+        }
+
+<span class="nc" id="L531">        project(n, g, pivot);</span>
+
+        /* Set initial values to other parameters */
+<span class="nc" id="L534">        double gnorm = ArrayMath.euclidianNorm(g);</span>
+
+<span class="nc" id="L536">        double fLastConstraint = ref.f;       /* Value at last constraint */</span>
+
+<span class="nc" id="L538">        double fLastReset = ref.f;            /* Value at last reset */</span>
+
+<span class="nc bnc" id="L540" title="All 2 branches missed.">        if (messages.contains(tnc_message.TNC_MSG_ITER)) {</span>
+<span class="nc" id="L541">            System.err.format(&quot;  NIT   NF   F                       GTG\n&quot;);</span>
+<span class="nc" id="L542">            printCurrentIteration(n, ref.f / ref.fscale, gfull,</span>
+                    ref.niter, ref.nfeval, pivot);
+        }
+
+        /* Set the diagonal of the approximate hessian to unity. */
+<span class="nc bnc" id="L547" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L548">            diagb[i] = 1.0;</span>
+        }
+
+        tnc_rc rc;
+        /* Start of main iterative loop */
+        while (true) {
+            /* Local minimum test */
+<span class="nc bnc" id="L555" title="All 2 branches missed.">            if (ArrayMath.euclidianNorm(g) &lt;= pgtol * ref.fscale) {</span>
+                /* |PG| == 0.0 =&gt; local minimum */
+<span class="nc" id="L557">                ArrayMath.copy(gfull, g);</span>
+<span class="nc" id="L558">                project(n, g, pivot);</span>
+<span class="nc bnc" id="L559" title="All 2 branches missed.">                if (messages.contains(tnc_message.TNC_MSG_INFO)) {</span>
+<span class="nc" id="L560">                    System.err.format(&quot;tnc: |pg| = %g -&gt; local minimum\n&quot;,</span>
+<span class="nc" id="L561">                            ArrayMath.euclidianNorm(g) / ref.fscale);</span>
+                }
+<span class="nc" id="L563">                rc = tnc_rc.TNC_LOCALMINIMUM;</span>
+<span class="nc" id="L564">                break;</span>
+            }
+
+            /* Terminate if more than maxnfeval evaluations have been made */
+<span class="nc bnc" id="L568" title="All 2 branches missed.">            if (ref.nfeval &gt;= maxnfeval) {</span>
+<span class="nc" id="L569">                rc = tnc_rc.TNC_MAXFUN;</span>
+<span class="nc" id="L570">                break;</span>
+            }
+
+            /* Rescale function if necessary */
+<span class="nc" id="L574">            double newscale = ArrayMath.euclidianNorm(g);</span>
+<span class="nc bnc" id="L575" title="All 4 branches missed.">            if ((newscale &gt; DBL_EPSILON) &amp;&amp; (Math.abs(Math.log10(newscale)) &gt; rescale)) {</span>
+<span class="nc" id="L576">                newscale = 1.0 / newscale;</span>
+
+<span class="nc" id="L578">                ref.f *= newscale;</span>
+<span class="nc" id="L579">                ref.fscale *= newscale;</span>
+<span class="nc" id="L580">                gnorm *= newscale;</span>
+<span class="nc" id="L581">                fLastConstraint *= newscale;</span>
+<span class="nc" id="L582">                fLastReset *= newscale;</span>
+<span class="nc" id="L583">                difnew *= newscale;</span>
+
+<span class="nc bnc" id="L585" title="All 2 branches missed.">                for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L586">                    g[i] *= newscale;</span>
+                }
+<span class="nc bnc" id="L588" title="All 2 branches missed.">                for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L589">                    diagb[i] = 1.0;</span>
+                }
+
+<span class="nc" id="L592">                upd1 = true;</span>
+<span class="nc" id="L593">                icycle = n - 1;</span>
+<span class="nc" id="L594">                newcon = true;</span>
+
+<span class="nc bnc" id="L596" title="All 2 branches missed.">                if (messages.contains(tnc_message.TNC_MSG_INFO)) {</span>
+<span class="nc" id="L597">                    System.err.format(&quot;tnc: fscale = %g\n&quot;, ref.fscale);</span>
+                }
+            }
+
+<span class="nc" id="L601">            ArrayMath.copy(x, temp);</span>
+<span class="nc" id="L602">            project(n, temp, pivot);</span>
+<span class="nc" id="L603">            double xnorm = ArrayMath.euclidianNorm(temp);</span>
+<span class="nc" id="L604">            int oldnfeval = ref.nfeval;</span>
+
+            /* Compute the new search direction */
+<span class="nc" id="L607">            tnc_directionRef tmpDirRef = new tnc_directionRef();</span>
+<span class="nc" id="L608">            tmpDirRef.diagb = diagb;</span>
+<span class="nc" id="L609">            tmpDirRef.nfeval = ref.nfeval;</span>
+<span class="nc" id="L610">            tmpDirRef.pivot = pivot;</span>
+<span class="nc" id="L611">            tmpDirRef.sk = sk;</span>
+<span class="nc" id="L612">            tmpDirRef.sr = sr;</span>
+<span class="nc" id="L613">            tmpDirRef.x = x;</span>
+<span class="nc" id="L614">            tmpDirRef.yk = yk;</span>
+<span class="nc" id="L615">            tmpDirRef.yr = yr;</span>
+<span class="nc" id="L616">            tmpDirRef.zsol = pk;</span>
+<span class="nc" id="L617">            tnc_rc frc = tnc_direction(g, n, maxCGit, maxnfeval, upd1, yksk, yrsr,</span>
+                    lreset, function, xscale, xoffset, ref.fscale, accuracy, gnorm,
+                    xnorm, low, up, tmpDirRef);
+<span class="nc" id="L620">            diagb = tmpDirRef.diagb;</span>
+<span class="nc" id="L621">            ref.nfeval = tmpDirRef.nfeval;</span>
+<span class="nc" id="L622">            pivot = tmpDirRef.pivot;</span>
+<span class="nc" id="L623">            sk = tmpDirRef.sk;</span>
+<span class="nc" id="L624">            sr = tmpDirRef.sr;</span>
+<span class="nc" id="L625">            x = tmpDirRef.x;</span>
+<span class="nc" id="L626">            yk = tmpDirRef.yk;</span>
+<span class="nc" id="L627">            yr = tmpDirRef.yr;</span>
+<span class="nc" id="L628">            pk = tmpDirRef.zsol;</span>
+
+            // TODO: This is not right
+<span class="nc bnc" id="L631" title="All 2 branches missed.">            if (frc != tnc_rc.TNC_LOCALMINIMUM) {</span>
+<span class="nc" id="L632">                rc = tnc_rc.TNC_USERABORT;</span>
+<span class="nc" id="L633">                break;</span>
+            }
+
+<span class="nc bnc" id="L636" title="All 2 branches missed.">            if (!newcon) {</span>
+<span class="nc bnc" id="L637" title="All 2 branches missed.">                if (!lreset) {</span>
+                    /* Compute the accumulated step and its corresponding gradient
+                     difference. */
+<span class="nc" id="L640">                    ArrayMath.xPlusY(sk, sr);</span>
+<span class="nc" id="L641">                    ArrayMath.xPlusY(yk, yr);</span>
+<span class="nc" id="L642">                    icycle++;</span>
+                } else {
+                    /* Initialize the sum of all the changes */
+<span class="nc" id="L645">                    ArrayMath.copy(sk, sr);</span>
+<span class="nc" id="L646">                    ArrayMath.copy(yk, yr);</span>
+<span class="nc" id="L647">                    fLastReset = ref.f;</span>
+<span class="nc" id="L648">                    icycle = 1;</span>
+                }
+            }
+
+<span class="nc" id="L652">            ArrayMath.copy(g, oldg);</span>
+<span class="nc" id="L653">            double oldf = ref.f;</span>
+<span class="nc" id="L654">            double oldgtp = ArrayMath.dotProduct(pk, g);</span>
+
+            /* Maximum unconstrained step length */
+<span class="nc" id="L657">            double ustpmax = stepmx / (ArrayMath.euclidianNorm(pk) + DBL_EPSILON);</span>
+
+            /* Maximum constrained step length */
+<span class="nc" id="L660">            double spe = stepMax(ustpmax, n, x, pk, pivot, low, up, xscale, xoffset);</span>
+
+<span class="nc bnc" id="L662" title="All 2 branches missed.">            if (spe &gt; 0.0) {</span>
+                /* Set the initial step length */
+<span class="nc" id="L664">                alpha = initialStep(ref.f, fmin / ref.fscale, oldgtp, spe);</span>
+
+                /* Perform the linear search */
+<span class="nc" id="L667">                linearSearchRef tmpLinSRef = new linearSearchRef();</span>
+<span class="nc" id="L668">                tmpLinSRef.alpha = alpha;</span>
+<span class="nc" id="L669">                tmpLinSRef.f = ref.f;</span>
+<span class="nc" id="L670">                tmpLinSRef.nfeval = ref.nfeval;</span>
+<span class="nc" id="L671">                ls_rc lsrc = linearSearch(n, function, low, up,</span>
+                        xscale, xoffset, ref.fscale, pivot,
+                        eta, ftol, spe, pk, x, gfull,
+                        maxnfeval, tmpLinSRef);
+<span class="nc" id="L675">                alpha = tmpLinSRef.alpha;</span>
+<span class="nc" id="L676">                ref.f = tmpLinSRef.f;</span>
+<span class="nc" id="L677">                ref.nfeval = tmpLinSRef.nfeval;</span>
+
+<span class="nc bnc" id="L679" title="All 2 branches missed.">                if (lsrc == ls_rc.LS_USERABORT) {</span>
+<span class="nc" id="L680">                    rc = tnc_rc.TNC_USERABORT;</span>
+<span class="nc" id="L681">                    break;</span>
+                }
+
+<span class="nc bnc" id="L684" title="All 2 branches missed.">                if (lsrc == ls_rc.LS_FAIL) {</span>
+<span class="nc" id="L685">                    rc = tnc_rc.TNC_LSFAIL;</span>
+<span class="nc" id="L686">                    break;</span>
+                }
+
+                /* If we went up to the maximum unconstrained step, increase it */
+<span class="nc bnc" id="L690" title="All 2 branches missed.">                if (alpha &gt;= 0.9 * ustpmax) {</span>
+<span class="nc" id="L691">                    stepmx *= 1e2;</span>
+<span class="nc bnc" id="L692" title="All 2 branches missed.">                    if (messages.contains(tnc_message.TNC_MSG_INFO)) {</span>
+<span class="nc" id="L693">                        System.err.format(&quot;tnc: stepmx = %g\n&quot;, stepmx);</span>
+                    }
+                }
+
+                /* If we went up to the maximum constrained step,
+                 a new constraint was encountered */
+<span class="nc bnc" id="L699" title="All 2 branches missed.">                if (alpha - spe &gt;= -DBL_EPSILON * 10.0) {</span>
+<span class="nc" id="L700">                    newcon = true;</span>
+                } else {
+                    /* Break if the linear search has failed to find a lower point */
+<span class="nc bnc" id="L703" title="All 2 branches missed.">                    if (lsrc != ls_rc.LS_OK) {</span>
+<span class="nc bnc" id="L704" title="All 2 branches missed.">                        if (lsrc == ls_rc.LS_MAXFUN) {</span>
+<span class="nc" id="L705">                            rc = tnc_rc.TNC_MAXFUN;</span>
+                        } else {
+<span class="nc" id="L707">                            rc = tnc_rc.TNC_LSFAIL;</span>
+                        }
+<span class="nc" id="L709">                        break;</span>
+                    }
+<span class="nc" id="L711">                    newcon = false;</span>
+                }
+<span class="nc" id="L713">            } else {</span>
+                /* Maximum constrained step == 0.0 =&gt; new constraint */
+<span class="nc" id="L715">                newcon = true;</span>
+            }
+
+<span class="nc bnc" id="L718" title="All 2 branches missed.">            if (newcon) {</span>
+<span class="nc bnc" id="L719" title="All 2 branches missed.">                if (!addConstraint(n, x, pk, pivot, low, up, xscale, xoffset)) {</span>
+<span class="nc bnc" id="L720" title="All 2 branches missed.">                    if (ref.nfeval == oldnfeval) {</span>
+<span class="nc" id="L721">                        rc = tnc_rc.TNC_NOPROGRESS;</span>
+<span class="nc" id="L722">                        break;</span>
+                    }
+                }
+<span class="nc" id="L725">                fLastConstraint = ref.f;</span>
+            }
+
+<span class="nc" id="L728">            ref.niter++;</span>
+
+            /* Invoke the callback function */
+<span class="nc bnc" id="L731" title="All 2 branches missed.">            if (callback != null) {</span>
+<span class="nc" id="L732">                unscalex(n, x, xscale, xoffset);</span>
+<span class="nc" id="L733">                callback.tnc_callback(x);</span>
+<span class="nc" id="L734">                scalex(n, x, xscale, xoffset);</span>
+            }
+
+            /* Set up parameters used in convergence and resetting tests */
+<span class="nc" id="L738">            double difold = difnew;</span>
+<span class="nc" id="L739">            difnew = oldf - ref.f;</span>
+
+            /* If this is the first iteration of a new cycle, compute the
+             percentage reduction factor for the resetting test */
+<span class="nc bnc" id="L743" title="All 2 branches missed.">            if (icycle == 1) {</span>
+<span class="nc bnc" id="L744" title="All 2 branches missed.">                if (difnew &gt; difold * 2.0) {</span>
+<span class="nc" id="L745">                    epsred += epsred;</span>
+                }
+<span class="nc bnc" id="L747" title="All 2 branches missed.">                if (difnew &lt; difold * 0.5) {</span>
+<span class="nc" id="L748">                    epsred *= 0.5;</span>
+                }
+            }
+
+<span class="nc" id="L752">            ArrayMath.copy(gfull, g);</span>
+<span class="nc" id="L753">            scaleg(n, g, xscale, ref.fscale);</span>
+
+<span class="nc" id="L755">            ArrayMath.copy(g, temp);</span>
+<span class="nc" id="L756">            project(n, temp, pivot);</span>
+<span class="nc" id="L757">            gnorm = ArrayMath.euclidianNorm(temp);</span>
+
+            /* Reset pivot */
+<span class="nc" id="L760">            boolean remcon = removeConstraint(oldgtp, gnorm, pgtol * ref.fscale, ref.f,</span>
+                    fLastConstraint, g, pivot, n);
+
+            /* If a constraint is removed */
+<span class="nc bnc" id="L764" title="All 2 branches missed.">            if (remcon) {</span>
+                /* Recalculate gnorm and reset fLastConstraint */
+<span class="nc" id="L766">                ArrayMath.copy(g, temp);</span>
+<span class="nc" id="L767">                project(n, temp, pivot);</span>
+<span class="nc" id="L768">                gnorm = ArrayMath.euclidianNorm(temp);</span>
+<span class="nc" id="L769">                fLastConstraint = ref.f;</span>
+            }
+
+<span class="nc bnc" id="L772" title="All 4 branches missed.">            if (!remcon &amp;&amp; !newcon) {</span>
+                /* No constraint removed &amp; no new constraint : tests for convergence */
+<span class="nc bnc" id="L774" title="All 2 branches missed.">                if (Math.abs(difnew) &lt;= ftol * ref.fscale) {</span>
+<span class="nc bnc" id="L775" title="All 2 branches missed.">                    if (messages.contains(tnc_message.TNC_MSG_INFO)) {</span>
+<span class="nc" id="L776">                        System.err.format(&quot;tnc: |fn-fn-1] = %g -&gt; convergence\n&quot;,</span>
+<span class="nc" id="L777">                                Math.abs(difnew) / ref.fscale);</span>
+                    }
+<span class="nc" id="L779">                    rc = tnc_rc.TNC_FCONVERGED;</span>
+<span class="nc" id="L780">                    break;</span>
+                }
+<span class="nc bnc" id="L782" title="All 2 branches missed.">                if (alpha * ArrayMath.euclidianNorm(pk) &lt;= xtol) {</span>
+<span class="nc bnc" id="L783" title="All 2 branches missed.">                    if (messages.contains(tnc_message.TNC_MSG_INFO)) {</span>
+<span class="nc" id="L784">                        System.err.format(&quot;tnc: |xn-xn-1] = %g -&gt; convergence\n&quot;,</span>
+<span class="nc" id="L785">                                alpha * ArrayMath.euclidianNorm(pk));</span>
+                    }
+<span class="nc" id="L787">                    rc = tnc_rc.TNC_XCONVERGED;</span>
+<span class="nc" id="L788">                    break;</span>
+                }
+            }
+
+<span class="nc" id="L792">            project(n, g, pivot);</span>
+
+<span class="nc bnc" id="L794" title="All 2 branches missed.">            if (messages.contains(tnc_message.TNC_MSG_ITER)) {</span>
+<span class="nc" id="L795">                printCurrentIteration(n, ref.f / ref.fscale, gfull,</span>
+                        ref.niter, ref.nfeval, pivot);
+            }
+
+            /* Compute the change in the iterates and the corresponding change in the
+             gradients */
+<span class="nc bnc" id="L801" title="All 2 branches missed.">            if (!newcon) {</span>
+<span class="nc bnc" id="L802" title="All 2 branches missed.">                for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L803">                    yk[i] = g[i] - oldg[i];</span>
+<span class="nc" id="L804">                    sk[i] = alpha * pk[i];</span>
+                }
+
+                /* Set up parameters used in updating the preconditioning strategy */
+<span class="nc" id="L808">                yksk = ArrayMath.dotProduct(yk, sk);</span>
+
+<span class="nc bnc" id="L810" title="All 4 branches missed.">                if (icycle == (n - 1) || difnew &lt; epsred * (fLastReset - ref.f)) {</span>
+<span class="nc" id="L811">                    lreset = true;</span>
+                } else {
+<span class="nc" id="L813">                    yrsr = ArrayMath.dotProduct(yr, sr);</span>
+<span class="nc bnc" id="L814" title="All 2 branches missed.">                    if (yrsr &lt;= 0.0) {</span>
+<span class="nc" id="L815">                        lreset = true;</span>
+                    } else {
+<span class="nc" id="L817">                        lreset = false;</span>
+                    }
+                }
+<span class="nc" id="L820">                upd1 = false;</span>
+            }
+<span class="nc" id="L822">        }</span>
+
+<span class="nc bnc" id="L824" title="All 2 branches missed.">        if (messages.contains(tnc_message.TNC_MSG_ITER)) {</span>
+<span class="nc" id="L825">            printCurrentIteration(n, ref.f / ref.fscale, gfull,</span>
+                    ref.niter, ref.nfeval, pivot);
+        }
+
+        /* Unscaling */
+<span class="nc" id="L830">        unscalex(n, x, xscale, xoffset);</span>
+<span class="nc" id="L831">        ArrayMath.clip(x, low, up);</span>
+<span class="nc" id="L832">        ref.f /= ref.fscale;</span>
+
+<span class="nc" id="L834">        return rc;</span>
+    }
+
+    /**
+     * Print the results of the current iteration
+     */
+    public void printCurrentIteration(int n, double f, double[] g, int niter,
+            int nfeval, int[] pivot) {
+<span class="nc" id="L842">        double gtg = 0.0;</span>
+<span class="nc bnc" id="L843" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L844" title="All 2 branches missed.">            if (pivot[i] == 0) {</span>
+<span class="nc" id="L845">                gtg += g[i] * g[i];</span>
+            }
+        }
+
+<span class="nc" id="L849">        System.err.format(&quot; %4d %4d %22.15E  %15.8E\n&quot;, niter, nfeval, f, gtg);</span>
+<span class="nc" id="L850">    }</span>
+
+    /**
+     * Set x[i] = 0.0 if direction i is currently constrained
+     */
+    public void project(int n, double[] x, int[] pivot) {
+<span class="nc bnc" id="L856" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L857" title="All 2 branches missed.">            if (pivot[i] != 0) {</span>
+<span class="nc" id="L858">                x[i] = 0.0;</span>
+            }
+        }
+<span class="nc" id="L861">    }</span>
+
+    /**
+     * Set x[i] = 0.0 if direction i is constant
+     */
+    public void projectConstants(int n, double[] x, double[] xscale) {
+<span class="nc bnc" id="L867" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L868" title="All 2 branches missed.">            if (xscale[i] == 0.0) {</span>
+<span class="nc" id="L869">                x[i] = 0.0;</span>
+            }
+        }
+<span class="nc" id="L872">    }</span>
+
+    /**
+     * Compute the maximum allowable step length
+     */
+    public double stepMax(double step, int n, double[] x, double[] dir,
+            int[] pivot, double[] low, double[] up, double[] xscale, double[] xoffset) {
+        /* Constrained maximum step */
+<span class="nc bnc" id="L880" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L881" title="All 4 branches missed.">            if ((pivot[i] == 0) &amp;&amp; (dir[i] != 0.0)) {</span>
+<span class="nc bnc" id="L882" title="All 2 branches missed.">                if (dir[i] &lt; 0.0) {</span>
+<span class="nc" id="L883">                    double t = (low[i] - xoffset[i]) / xscale[i] - x[i];</span>
+<span class="nc bnc" id="L884" title="All 2 branches missed.">                    if (t &gt; step * dir[i]) {</span>
+<span class="nc" id="L885">                        step = t / dir[i];</span>
+                    }
+<span class="nc" id="L887">                } else {</span>
+<span class="nc" id="L888">                    double t = (up[i] - xoffset[i]) / xscale[i] - x[i];</span>
+<span class="nc bnc" id="L889" title="All 2 branches missed.">                    if (t &lt; step * dir[i]) {</span>
+<span class="nc" id="L890">                        step = t / dir[i];</span>
+                    }
+                }
+            }
+        }
+
+<span class="nc" id="L896">        return step;</span>
+    }
+
+    /**
+     * Update the constraint vector pivot if a new constraint is encountered
+     */
+    public boolean addConstraint(int n, double[] x, double[] p, int[] pivot,
+            double[] low, double[] up, double[] xscale, double[] xoffset) {
+<span class="nc" id="L904">        boolean newcon = false;</span>
+<span class="nc bnc" id="L905" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L906" title="All 4 branches missed.">            if ((pivot[i] == 0) &amp;&amp; (p[i] != 0.0)) {</span>
+<span class="nc bnc" id="L907" title="All 4 branches missed.">                if (p[i] &lt; 0.0 &amp;&amp; low[i] != Double.NEGATIVE_INFINITY) {</span>
+<span class="nc" id="L908">                    double tol = DBL_EPSILON * 10.0 * (Math.abs(low[i]) + 1.0);</span>
+<span class="nc bnc" id="L909" title="All 2 branches missed.">                    if (x[i] * xscale[i] + xoffset[i] - low[i] &lt;= tol) {</span>
+<span class="nc" id="L910">                        pivot[i] = -1;</span>
+<span class="nc" id="L911">                        x[i] = (low[i] - xoffset[i]) / xscale[i];</span>
+<span class="nc" id="L912">                        newcon = true;</span>
+                    }
+<span class="nc bnc" id="L914" title="All 2 branches missed.">                } else if (up[i] != Double.POSITIVE_INFINITY) {</span>
+<span class="nc" id="L915">                    double tol = DBL_EPSILON * 10.0 * (Math.abs(up[i]) + 1.0);</span>
+<span class="nc bnc" id="L916" title="All 2 branches missed.">                    if (up[i] - (x[i] * xscale[i] + xoffset[i]) &lt;= tol) {</span>
+<span class="nc" id="L917">                        pivot[i] = 1;</span>
+<span class="nc" id="L918">                        x[i] = (up[i] - xoffset[i]) / xscale[i];</span>
+<span class="nc" id="L919">                        newcon = true;</span>
+                    }
+                }
+            }
+        }
+<span class="nc" id="L924">        return newcon;</span>
+    }
+
+    /**
+     * Check if a constraint is no more active
+     */
+    public boolean removeConstraint(double gtpnew, double gnorm, double pgtolfs,
+            double f, double fLastConstraint, double[] g, int[] pivot, int n) {
+<span class="nc bnc" id="L932" title="All 4 branches missed.">        if (((fLastConstraint - f) &lt;= (gtpnew * -0.5)) &amp;&amp; (gnorm &gt; pgtolfs)) {</span>
+<span class="nc" id="L933">            return false;</span>
+        }
+
+<span class="nc" id="L936">        int imax = -1;</span>
+<span class="nc" id="L937">        double cmax = 0.0;</span>
+
+<span class="nc bnc" id="L939" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc bnc" id="L940" title="All 2 branches missed.">            if (pivot[i] == 2) {</span>
+<span class="nc" id="L941">                continue;</span>
+            }
+<span class="nc" id="L943">            double t = -pivot[i] * g[i];</span>
+<span class="nc bnc" id="L944" title="All 2 branches missed.">            if (t &lt; cmax) {</span>
+<span class="nc" id="L945">                cmax = t;</span>
+<span class="nc" id="L946">                imax = i;</span>
+            }
+        }
+
+<span class="nc bnc" id="L950" title="All 2 branches missed.">        if (imax != -1) {</span>
+<span class="nc" id="L951">            pivot[imax] = 0;</span>
+<span class="nc" id="L952">            return true;</span>
+        } else {
+<span class="nc" id="L954">            return false;</span>
+        }
+
+        /*
+         * For details, see gill, murray, and wright (1981, p. 308) and
+         * fletcher (1981, p. 116). The multiplier tests (here, testing
+         * the sign of the components of the gradient) may still need to
+         * modified to incorporate tolerances for zero.
+         */
+    }
+
+<span class="nc" id="L965">    public class tnc_directionRef {</span>
+
+        public double[] zsol;
+        public double[] diagb;
+        public double[] x;
+        public int nfeval;
+        public double[] sk;
+        public double[] yk;
+        public double[] sr;
+        public double[] yr;
+        public int[] pivot;
+    }
+
+    /**
+     * This routine performs a preconditioned conjugate-gradient iteration in
+     * order to solve the newton equations for a search direction for a
+     * truncated-newton algorithm. When the value of the quadratic model is
+     * sufficiently reduced, the iteration is terminated.
+     */
+    public tnc_rc tnc_direction(double[] g, int n, int maxCGit, int maxnfeval,
+            boolean upd1, double yksk, double yrsr, boolean lreset,
+            TncFunction function, double[] xscale, double[] xoffset,
+            double fscale, double accuracy, double gnorm, double xnorm,
+            double[] low, double[] up, tnc_directionRef ref) {
+        /* No CG it. =&gt; dir = -grad */
+<span class="nc bnc" id="L990" title="All 2 branches missed.">        if (maxCGit == 0) {</span>
+<span class="nc" id="L991">            ArrayMath.copy(g, ref.zsol);</span>
+<span class="nc" id="L992">            ArrayMath.negate(ref.zsol);</span>
+<span class="nc" id="L993">            project(n, ref.zsol, ref.pivot);</span>
+            // TODO : Not right
+<span class="nc" id="L995">            return tnc_rc.TNC_LOCALMINIMUM;</span>
+        }
+
+        /* General initialization */
+<span class="nc" id="L999">        double rhsnrm = gnorm;</span>
+<span class="nc" id="L1000">        double tol = 1e-12;</span>
+<span class="nc" id="L1001">        double qold = 0.0;</span>
+<span class="nc" id="L1002">        double rzold = 0.0;                /* Uneeded */</span>
+
+<span class="nc" id="L1004">        double[] r = new double[n]; /* Residual */</span>
+
+<span class="nc" id="L1006">        double[] v = new double[n];</span>
+<span class="nc" id="L1007">        double[] zk = new double[n];</span>
+<span class="nc" id="L1008">        double[] emat = new double[n];   /* Diagonal preconditoning matrix */</span>
+
+<span class="nc" id="L1010">        double[] gv = new double[n];       /* hessian times v */</span>
+
+        /* Initialization for preconditioned conjugate-gradient algorithm */
+<span class="nc" id="L1013">        initPreconditioner(ref.diagb, emat, n, lreset, yksk, yrsr, ref.sk, ref.yk, ref.sr,</span>
+                ref.yr, upd1);
+
+<span class="nc bnc" id="L1016" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1017">            r[i] = -g[i];</span>
+<span class="nc" id="L1018">            v[i] = 0.0;</span>
+<span class="nc" id="L1019">            ref.zsol[i] = 0.0;          /* Computed search direction */</span>
+
+        }
+
+        /* Main iteration */
+<span class="nc bnc" id="L1024" title="All 2 branches missed.">        for (int k = 0; k &lt; maxCGit; k++) {</span>
+            /* CG iteration to solve system of equations */
+<span class="nc" id="L1026">            project(n, r, ref.pivot);</span>
+<span class="nc" id="L1027">            msolve(r, zk, n, ref.sk, ref.yk, ref.diagb, ref.sr, ref.yr, upd1, yksk, yrsr,</span>
+                    lreset);
+<span class="nc" id="L1029">            project(n, zk, ref.pivot);</span>
+<span class="nc" id="L1030">            double rz = ArrayMath.dotProduct(r, zk);</span>
+
+<span class="nc bnc" id="L1032" title="All 4 branches missed.">            if ((rz / rhsnrm &lt; tol) || (ref.nfeval &gt;= (maxnfeval - 1))) {</span>
+                /* Truncate algorithm in case of an emergency
+                 or too many function evaluations */
+<span class="nc bnc" id="L1035" title="All 2 branches missed.">                if (k == 0) {</span>
+<span class="nc" id="L1036">                    ArrayMath.copy(g, ref.zsol);</span>
+<span class="nc" id="L1037">                    ArrayMath.negate(ref.zsol);</span>
+<span class="nc" id="L1038">                    project(n, ref.zsol, ref.pivot);</span>
+                }
+                break;
+            }
+            double beta;
+<span class="nc bnc" id="L1043" title="All 2 branches missed.">            if (k == 0) {</span>
+<span class="nc" id="L1044">                beta = 0.0;</span>
+            } else {
+<span class="nc" id="L1046">                beta = rz / rzold;</span>
+            }
+
+<span class="nc bnc" id="L1049" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1050">                v[i] = zk[i] + beta * v[i];</span>
+            }
+
+<span class="nc" id="L1053">            project(n, v, ref.pivot);</span>
+<span class="nc" id="L1054">            tnc_rc frc = hessianTimesVector(v, gv, n, ref.x, g, function,</span>
+                    xscale, xoffset, fscale, accuracy, xnorm,
+                    low, up);
+<span class="nc" id="L1057">            ref.nfeval++;</span>
+            // TODO: Not right
+<span class="nc bnc" id="L1059" title="All 2 branches missed.">            if (frc != tnc_rc.TNC_LOCALMINIMUM) {</span>
+<span class="nc" id="L1060">                return frc;</span>
+            }
+<span class="nc" id="L1062">            project(n, gv, ref.pivot);</span>
+
+<span class="nc" id="L1064">            double vgv = ArrayMath.dotProduct(v, gv);</span>
+<span class="nc bnc" id="L1065" title="All 2 branches missed.">            if (vgv / rhsnrm &lt; tol) {</span>
+                /* Truncate algorithm in case of an emergency */
+<span class="nc bnc" id="L1067" title="All 2 branches missed.">                if (k == 0) {</span>
+<span class="nc" id="L1068">                    msolve(g, ref.zsol, n, ref.sk, ref.yk, ref.diagb, ref.sr, ref.yr, upd1, yksk,</span>
+                            yrsr, lreset);
+<span class="nc" id="L1070">                    ArrayMath.negate(ref.zsol);</span>
+<span class="nc" id="L1071">                    project(n, ref.zsol, ref.pivot);</span>
+                }
+                break;
+            }
+<span class="nc" id="L1075">            diagonalScaling(n, emat, v, gv, r);</span>
+
+            /* Compute linear step length */
+<span class="nc" id="L1078">            double alpha = rz / vgv;</span>
+
+            /* Compute current solution and related vectors */
+<span class="nc" id="L1081">            ArrayMath.axPlusY(alpha, v, ref.zsol);</span>
+<span class="nc" id="L1082">            ArrayMath.axPlusY(-alpha, gv, r);</span>
+
+            /* Test for convergence */
+<span class="nc" id="L1085">            double gtp = ArrayMath.dotProduct(ref.zsol, g);</span>
+<span class="nc" id="L1086">            double pr = ArrayMath.dotProduct(r, ref.zsol);</span>
+<span class="nc" id="L1087">            double qnew = (gtp + pr) * 0.5;</span>
+<span class="nc" id="L1088">            double qtest = (k + 1) * (1.0 - qold / qnew);</span>
+<span class="nc bnc" id="L1089" title="All 2 branches missed.">            if (qtest &lt;= 0.5) {</span>
+<span class="nc" id="L1090">                break;</span>
+            }
+
+            /* Perform cautionary test */
+<span class="nc bnc" id="L1094" title="All 2 branches missed.">            if (gtp &gt; 0.0) {</span>
+                /* Truncate algorithm in case of an emergency */
+<span class="nc" id="L1096">                ArrayMath.axPlusY(-alpha, v, ref.zsol);</span>
+<span class="nc" id="L1097">                break;</span>
+            }
+
+<span class="nc" id="L1100">            qold = qnew;</span>
+<span class="nc" id="L1101">            rzold = rz;</span>
+        }
+
+        /* Terminate algorithm */
+        /* Store (or restore) diagonal preconditioning */
+<span class="nc" id="L1106">        ArrayMath.copy(emat, ref.diagb);</span>
+
+        // TODO : Not right
+<span class="nc" id="L1109">        return tnc_rc.TNC_LOCALMINIMUM;</span>
+    }
+
+    /**
+     * Update the preconditioning matrix based on a diagonal version of the bfgs
+     * quasi-newton update.
+     */
+    public void diagonalScaling(int n, double[] e, double[] v, double[] gv,
+            double[] r) {
+<span class="nc" id="L1118">        double vr = 1.0 / ArrayMath.dotProduct(v, r);</span>
+<span class="nc" id="L1119">        double vgv = 1.0 / ArrayMath.dotProduct(v, gv);</span>
+<span class="nc bnc" id="L1120" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1121">            e[i] += -r[i] * r[i] * vr + gv[i] * gv[i] * vgv;</span>
+<span class="nc bnc" id="L1122" title="All 2 branches missed.">            if (e[i] &lt;= 1e-6) {</span>
+<span class="nc" id="L1123">                e[i] = 1.0;</span>
+            }
+        }
+<span class="nc" id="L1126">    }</span>
+
+    /**
+     * Returns the length of the initial step to be taken along the vector p in
+     * the next linear search.
+     */
+    public double initialStep(double fnew, double fmin, double gtp, double smax) {
+<span class="nc" id="L1133">        double d = Math.abs(fnew - fmin);</span>
+<span class="nc" id="L1134">        double alpha = 1.0;</span>
+<span class="nc bnc" id="L1135" title="All 4 branches missed.">        if (d * 2.0 &lt;= -(gtp) &amp;&amp; d &gt;= DBL_EPSILON) {</span>
+<span class="nc" id="L1136">            alpha = d * -2.0 / gtp;</span>
+        }
+<span class="nc bnc" id="L1138" title="All 2 branches missed.">        if (alpha &gt;= smax) {</span>
+<span class="nc" id="L1139">            alpha = smax;</span>
+        }
+
+<span class="nc" id="L1142">        return alpha;</span>
+    }
+
+    /**
+     * Hessian vector product through finite differences
+     */
+    public tnc_rc hessianTimesVector(double[] v, double[] gv, int n, double[] x,
+            double[] g, TncFunction function, double[] xscale, double[] xoffset,
+            double fscale, double accuracy, double xnorm, double[] low,
+            double[] up) {
+<span class="nc" id="L1152">        double[] xv = new double[n];</span>
+
+<span class="nc" id="L1154">        double delta = accuracy * (xnorm + 1.0);</span>
+<span class="nc bnc" id="L1155" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1156">            xv[i] = x[i] + delta * v[i];</span>
+        }
+
+<span class="nc" id="L1159">        unscalex(n, xv, xscale, xoffset);</span>
+<span class="nc" id="L1160">        ArrayMath.clip(xv, low, up);</span>
+<span class="nc" id="L1161">        double f = function.evaluate(xv, gv);</span>
+
+<span class="nc" id="L1163">        scaleg(n, gv, xscale, fscale);</span>
+
+<span class="nc" id="L1165">        double dinv = 1.0 / delta;</span>
+<span class="nc bnc" id="L1166" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1167">            gv[i] = (gv[i] - g[i]) * dinv;</span>
+        }
+
+<span class="nc" id="L1170">        projectConstants(n, gv, xscale);</span>
+
+<span class="nc" id="L1172">        return tnc_rc.TNC_LOCALMINIMUM;</span>
+    }
+
+    /**
+     * This routine acts as a preconditioning step for the linear
+     * conjugate-gradient routine. It is also the method of computing the search
+     * direction from the gradient for the non-linear conjugate-gradient code.
+     * It represents a two-step self-scaled bfgs formula.
+     */
+    public void msolve(double[] g, double[] y, int n,
+            double[] sk, double[] yk, double[] diagb, double[] sr,
+            double[] yr, boolean upd1, double yksk, double yrsr,
+            boolean lreset) {
+<span class="nc bnc" id="L1185" title="All 2 branches missed.">        if (upd1) {</span>
+<span class="nc bnc" id="L1186" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1187">                y[i] = g[i] / diagb[i];</span>
+            }
+<span class="nc" id="L1189">            return;</span>
+        }
+
+<span class="nc" id="L1192">        double gsk = ArrayMath.dotProduct(g, sk);</span>
+<span class="nc" id="L1193">        double[] hg = new double[n];</span>
+<span class="nc" id="L1194">        double[] hyr = new double[n];</span>
+<span class="nc" id="L1195">        double[] hyk = new double[n];</span>
+
+        /* Compute gh and hy where h is the inverse of the diagonals */
+<span class="nc bnc" id="L1198" title="All 2 branches missed.">        if (lreset) {</span>
+<span class="nc bnc" id="L1199" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1200">                double rdiagb = 1.0 / diagb[i];</span>
+<span class="nc" id="L1201">                hg[i] = g[i] * rdiagb;</span>
+<span class="nc" id="L1202">                hyk[i] = yk[i] * rdiagb;</span>
+            }
+<span class="nc" id="L1204">            double ykhyk = ArrayMath.dotProduct(yk, hyk);</span>
+<span class="nc" id="L1205">            double ghyk = ArrayMath.dotProduct(g, hyk);</span>
+<span class="nc" id="L1206">            ssbfgs(n, 1.0, sk, hg, hyk, yksk, ykhyk, gsk, ghyk, y);</span>
+<span class="nc" id="L1207">        } else {</span>
+<span class="nc bnc" id="L1208" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1209">                double rdiagb = 1.0 / diagb[i];</span>
+<span class="nc" id="L1210">                hg[i] = g[i] * rdiagb;</span>
+<span class="nc" id="L1211">                hyk[i] = yk[i] * rdiagb;</span>
+<span class="nc" id="L1212">                hyr[i] = yr[i] * rdiagb;</span>
+            }
+<span class="nc" id="L1214">            double gsr = ArrayMath.dotProduct(g, sr);</span>
+<span class="nc" id="L1215">            double ghyr = ArrayMath.dotProduct(g, hyr);</span>
+<span class="nc" id="L1216">            double yrhyr = ArrayMath.dotProduct(yr, hyr);</span>
+<span class="nc" id="L1217">            ssbfgs(n, 1.0, sr, hg, hyr, yrsr, yrhyr, gsr, ghyr, hg);</span>
+<span class="nc" id="L1218">            double yksr = ArrayMath.dotProduct(yk, sr);</span>
+<span class="nc" id="L1219">            double ykhyr = ArrayMath.dotProduct(yk, hyr);</span>
+<span class="nc" id="L1220">            ssbfgs(n, 1.0, sr, hyk, hyr, yrsr, yrhyr, yksr, ykhyr, hyk);</span>
+<span class="nc" id="L1221">            double ykhyk = ArrayMath.dotProduct(hyk, yk);</span>
+<span class="nc" id="L1222">            double ghyk = ArrayMath.dotProduct(hyk, g);</span>
+<span class="nc" id="L1223">            ssbfgs(n, 1.0, sk, hg, hyk, yksk, ykhyk, gsk, ghyk, y);</span>
+        }
+<span class="nc" id="L1225">    }</span>
+
+    /**
+     * Self-scaled BFGS
+     */
+    public void ssbfgs(int n, double gamma, double[] sj, double[] hjv,
+            double[] hjyj, double yjsj, double yjhyj, double vsj, double vhyj,
+            double[] hjp1v) {
+        double beta, delta;
+<span class="nc bnc" id="L1234" title="All 2 branches missed.">        if (yjsj == 0.0) {</span>
+<span class="nc" id="L1235">            delta = 0.0;</span>
+<span class="nc" id="L1236">            beta = 0.0;</span>
+        } else {
+<span class="nc" id="L1238">            delta = (gamma * yjhyj / yjsj + 1.0) * vsj / yjsj</span>
+                    - gamma * vhyj / yjsj;
+<span class="nc" id="L1240">            beta = -gamma * vsj / yjsj;</span>
+        }
+
+<span class="nc bnc" id="L1243" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1244">            hjp1v[i] = gamma * hjv[i] + delta * sj[i] + beta * hjyj[i];</span>
+        }
+<span class="nc" id="L1246">    }</span>
+
+    /**
+     * Initialize the preconditioner
+     */
+    public void initPreconditioner(double[] diagb, double[] emat, int n,
+            boolean lreset, double yksk, double yrsr, double[] sk, double[] yk,
+            double[] sr, double[] yr, boolean upd1) {
+<span class="nc bnc" id="L1254" title="All 2 branches missed.">        if (upd1) {</span>
+<span class="nc" id="L1255">            ArrayMath.copy(diagb, emat);</span>
+<span class="nc" id="L1256">            return;</span>
+        }
+
+<span class="nc" id="L1259">        double[] bsk = new double[n];</span>
+
+<span class="nc bnc" id="L1261" title="All 2 branches missed.">        if (lreset) {</span>
+<span class="nc bnc" id="L1262" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1263">                bsk[i] = diagb[i] * sk[i];</span>
+            }
+<span class="nc" id="L1265">            double sds = ArrayMath.dotProduct(sk, bsk);</span>
+<span class="nc bnc" id="L1266" title="All 2 branches missed.">            if (yksk == 0.0) {</span>
+<span class="nc" id="L1267">                yksk = 1.0;</span>
+            }
+<span class="nc bnc" id="L1269" title="All 2 branches missed.">            if (sds == 0.0) {</span>
+<span class="nc" id="L1270">                sds = 1.0;</span>
+            }
+<span class="nc bnc" id="L1272" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1273">                double td = diagb[i];</span>
+<span class="nc" id="L1274">                emat[i] = td - td * td * sk[i] * sk[i] / sds</span>
+                        + yk[i] * yk[i] / yksk;
+            }
+<span class="nc" id="L1277">        } else {</span>
+<span class="nc bnc" id="L1278" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1279">                bsk[i] = diagb[i] * sr[i];</span>
+            }
+<span class="nc" id="L1281">            double sds = ArrayMath.dotProduct(sr, bsk);</span>
+<span class="nc" id="L1282">            double srds = ArrayMath.dotProduct(sk, bsk);</span>
+<span class="nc" id="L1283">            double yrsk = ArrayMath.dotProduct(yr, sk);</span>
+<span class="nc bnc" id="L1284" title="All 2 branches missed.">            if (yrsr == 0.0) {</span>
+<span class="nc" id="L1285">                yrsr = 1.0;</span>
+            }
+<span class="nc bnc" id="L1287" title="All 2 branches missed.">            if (sds == 0.0) {</span>
+<span class="nc" id="L1288">                sds = 1.0;</span>
+            }
+<span class="nc bnc" id="L1290" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1291">                double td = diagb[i];</span>
+<span class="nc" id="L1292">                bsk[i] = td * sk[i] - bsk[i] * srds / sds + yr[i] * yrsk / yrsr;</span>
+<span class="nc" id="L1293">                emat[i] = td - td * td * sr[i] * sr[i] / sds + yr[i] * yr[i] / yrsr;</span>
+            }
+<span class="nc" id="L1295">            sds = ArrayMath.dotProduct(sk, bsk);</span>
+<span class="nc bnc" id="L1296" title="All 2 branches missed.">            if (yksk == 0.0) {</span>
+<span class="nc" id="L1297">                yksk = 1.0;</span>
+            }
+<span class="nc bnc" id="L1299" title="All 2 branches missed.">            if (sds == 0.0) {</span>
+<span class="nc" id="L1300">                sds = 1.0;</span>
+            }
+<span class="nc bnc" id="L1302" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1303">                emat[i] -= bsk[i] * bsk[i] / sds + yk[i] * yk[i] / yksk;</span>
+            }
+        }
+<span class="nc" id="L1306">    }</span>
+
+<span class="nc" id="L1308">    public class linearSearchRef {</span>
+
+        public double f;
+        public double alpha;
+        public int nfeval;
+    }
+
+    /**
+     * Line search algorithm of gill and murray
+     */
+    public ls_rc linearSearch(int n, TncFunction function, double[] low,
+            double[] up, double[] xscale, double[] xoffset, double fscale,
+            int[] pivot, double eta, double ftol, double xbnd, double[] p,
+            double[] x, double gfull[], int maxnfeval, linearSearchRef ref) {
+<span class="nc" id="L1322">        int maxlsit = 64;</span>
+
+<span class="nc" id="L1324">        double[] temp = new double[n];</span>
+<span class="nc" id="L1325">        double[] tempgfull = new double[n];</span>
+<span class="nc" id="L1326">        double[] newgfull = new double[n];</span>
+
+<span class="nc" id="L1328">        ArrayMath.copy(gfull, temp);</span>
+<span class="nc" id="L1329">        scaleg(n, temp, xscale, fscale);</span>
+<span class="nc" id="L1330">        double gu = ArrayMath.dotProduct(temp, p);</span>
+
+<span class="nc" id="L1332">        ArrayMath.copy(x, temp);</span>
+<span class="nc" id="L1333">        project(n, temp, pivot);</span>
+<span class="nc" id="L1334">        double xnorm = ArrayMath.euclidianNorm(temp);</span>
+
+        /* Compute the absolute and relative tolerances for the linear search */
+<span class="nc" id="L1337">        double rteps = Math.sqrt(DBL_EPSILON);</span>
+<span class="nc" id="L1338">        double pe = ArrayMath.euclidianNorm(p) + DBL_EPSILON;</span>
+<span class="nc" id="L1339">        double reltol = rteps * (xnorm + 1.0) / pe;</span>
+<span class="nc" id="L1340">        double abstol = -DBL_EPSILON * (1.0 + Math.abs(ref.f)) / (gu - DBL_EPSILON);</span>
+
+        /* Compute the smallest allowable spacing between points in the linear
+         search */
+<span class="nc" id="L1344">        double tnytol = DBL_EPSILON * (xnorm + 1.0) / pe;</span>
+
+<span class="nc" id="L1346">        double rtsmll = DBL_EPSILON;</span>
+<span class="nc" id="L1347">        double big = 1.0 / (DBL_EPSILON * DBL_EPSILON);</span>
+<span class="nc" id="L1348">        int itcnt = 0;</span>
+
+        /* Set the estimated relative precision in f(x). */
+<span class="nc" id="L1351">        double fpresn = ftol;</span>
+
+<span class="nc" id="L1353">        double u = ref.alpha;</span>
+<span class="nc" id="L1354">        double fu = ref.f;</span>
+<span class="nc" id="L1355">        double fmin = ref.f;</span>
+<span class="nc" id="L1356">        double rmu = 1e-4;</span>
+
+        /* Setup */
+<span class="nc" id="L1359">        getptcInitRef tmpPInitRef = new getptcInitRef();</span>
+<span class="nc" id="L1360">        tmpPInitRef.abstol = abstol;</span>
+<span class="nc" id="L1361">        tmpPInitRef.fmin = fmin;</span>
+<span class="nc" id="L1362">        tmpPInitRef.fu = fu;</span>
+<span class="nc" id="L1363">        tmpPInitRef.gu = gu;</span>
+<span class="nc" id="L1364">        tmpPInitRef.reltol = reltol;</span>
+<span class="nc" id="L1365">        tmpPInitRef.u = u;</span>
+<span class="nc" id="L1366">        tmpPInitRef.xmin = ref.alpha;</span>
+<span class="nc" id="L1367">        getptc_rc itest = getptcInit(tnytol, eta, rmu, xbnd, tmpPInitRef);</span>
+<span class="nc" id="L1368">        double a = tmpPInitRef.a;</span>
+<span class="nc" id="L1369">        abstol = tmpPInitRef.abstol;</span>
+<span class="nc" id="L1370">        double b = tmpPInitRef.b;</span>
+<span class="nc" id="L1371">        double b1 = tmpPInitRef.b1;</span>
+<span class="nc" id="L1372">        boolean braktd = tmpPInitRef.braktd;</span>
+<span class="nc" id="L1373">        double e = tmpPInitRef.e;</span>
+<span class="nc" id="L1374">        double factor = tmpPInitRef.factor;</span>
+<span class="nc" id="L1375">        fmin = tmpPInitRef.fmin;</span>
+<span class="nc" id="L1376">        fu = tmpPInitRef.fu;</span>
+<span class="nc" id="L1377">        double fw = tmpPInitRef.fw;</span>
+<span class="nc" id="L1378">        double gmin = tmpPInitRef.gmin;</span>
+<span class="nc" id="L1379">        double gtest1 = tmpPInitRef.gtest1;</span>
+<span class="nc" id="L1380">        double gtest2 = tmpPInitRef.gtest2;</span>
+<span class="nc" id="L1381">        gu = tmpPInitRef.gu;</span>
+<span class="nc" id="L1382">        double gw = tmpPInitRef.gw;</span>
+<span class="nc" id="L1383">        double oldf = tmpPInitRef.oldf;</span>
+<span class="nc" id="L1384">        reltol = tmpPInitRef.reltol;</span>
+<span class="nc" id="L1385">        double scxbnd = tmpPInitRef.scxbnd;</span>
+<span class="nc" id="L1386">        double step = tmpPInitRef.step;</span>
+<span class="nc" id="L1387">        double tol = tmpPInitRef.tol;</span>
+<span class="nc" id="L1388">        u = tmpPInitRef.u;</span>
+<span class="nc" id="L1389">        ref.alpha = tmpPInitRef.xmin;</span>
+<span class="nc" id="L1390">        double xw = tmpPInitRef.xw;</span>
+        
+        /* If itest == GETPTC_EVAL, the algorithm requires the function value to be
+         calculated */
+<span class="nc bnc" id="L1394" title="All 2 branches missed.">        while (itest == getptc_rc.GETPTC_EVAL) {</span>
+            /* Test for too many iterations or too many function evals */
+<span class="nc bnc" id="L1396" title="All 4 branches missed.">            if ((++itcnt &gt; maxlsit) || (ref.nfeval &gt;= maxnfeval)) {</span>
+<span class="nc" id="L1397">                break;</span>
+            }
+
+<span class="nc" id="L1400">            double ualpha = ref.alpha + u;</span>
+<span class="nc bnc" id="L1401" title="All 2 branches missed.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1402">                temp[i] = x[i] + ualpha * p[i];</span>
+            }
+
+            /* Function evaluation */
+<span class="nc" id="L1406">            unscalex(n, temp, xscale, xoffset);</span>
+<span class="nc" id="L1407">            ArrayMath.clip(temp, low, up);</span>
+
+<span class="nc" id="L1409">            fu = function.evaluate(temp, tempgfull);</span>
+<span class="nc" id="L1410">            ref.nfeval++;</span>
+
+<span class="nc" id="L1412">            fu *= fscale;</span>
+
+<span class="nc" id="L1414">            ArrayMath.copy(tempgfull, temp);</span>
+<span class="nc" id="L1415">            scaleg(n, temp, xscale, fscale);</span>
+<span class="nc" id="L1416">            gu = ArrayMath.dotProduct(temp, p);</span>
+
+<span class="nc" id="L1418">            getptcIterRef tmpPIterRef = new getptcIterRef();</span>
+<span class="nc" id="L1419">            tmpPIterRef.a = a;</span>
+<span class="nc" id="L1420">            tmpPIterRef.abstol = abstol;</span>
+<span class="nc" id="L1421">            tmpPIterRef.b = b;</span>
+<span class="nc" id="L1422">            tmpPIterRef.b1 = b1;</span>
+<span class="nc" id="L1423">            tmpPIterRef.braktd = braktd;</span>
+<span class="nc" id="L1424">            tmpPIterRef.e = e;</span>
+<span class="nc" id="L1425">            tmpPIterRef.factor = factor;</span>
+<span class="nc" id="L1426">            tmpPIterRef.fmin = fmin;</span>
+<span class="nc" id="L1427">            tmpPIterRef.fu = fu;</span>
+<span class="nc" id="L1428">            tmpPIterRef.fw = fw;</span>
+<span class="nc" id="L1429">            tmpPIterRef.gmin = gmin;</span>
+<span class="nc" id="L1430">            tmpPIterRef.gtest1 = gtest1;</span>
+<span class="nc" id="L1431">            tmpPIterRef.gtest2 = gtest2;</span>
+<span class="nc" id="L1432">            tmpPIterRef.gu = gu;</span>
+<span class="nc" id="L1433">            tmpPIterRef.gw = gw;</span>
+<span class="nc" id="L1434">            tmpPIterRef.oldf = oldf;</span>
+<span class="nc" id="L1435">            tmpPIterRef.reltol = reltol;</span>
+<span class="nc" id="L1436">            tmpPIterRef.scxbnd = scxbnd;</span>
+<span class="nc" id="L1437">            tmpPIterRef.step = step;</span>
+<span class="nc" id="L1438">            tmpPIterRef.tol = tol;</span>
+<span class="nc" id="L1439">            tmpPIterRef.u = u;</span>
+<span class="nc" id="L1440">            tmpPIterRef.xmin = ref.alpha;</span>
+<span class="nc" id="L1441">            tmpPIterRef.xw = xw;</span>
+<span class="nc" id="L1442">            itest = getptcIter(big, rtsmll, tnytol, fpresn, xbnd, tmpPIterRef);</span>
+<span class="nc" id="L1443">            a = tmpPIterRef.a;</span>
+<span class="nc" id="L1444">            abstol = tmpPIterRef.abstol;</span>
+<span class="nc" id="L1445">            b = tmpPIterRef.b;</span>
+<span class="nc" id="L1446">            b1 = tmpPIterRef.b1;</span>
+<span class="nc" id="L1447">            braktd = tmpPIterRef.braktd;</span>
+<span class="nc" id="L1448">            e = tmpPIterRef.e;</span>
+<span class="nc" id="L1449">            factor = tmpPIterRef.factor;</span>
+<span class="nc" id="L1450">            fmin = tmpPIterRef.fmin;</span>
+<span class="nc" id="L1451">            fu = tmpPIterRef.fu;</span>
+<span class="nc" id="L1452">            fw = tmpPIterRef.fw;</span>
+<span class="nc" id="L1453">            gmin = tmpPIterRef.gmin;</span>
+<span class="nc" id="L1454">            gtest1 = tmpPIterRef.gtest1;</span>
+<span class="nc" id="L1455">            gtest2 = tmpPIterRef.gtest2;</span>
+<span class="nc" id="L1456">            gu = tmpPIterRef.gu;</span>
+<span class="nc" id="L1457">            gw = tmpPIterRef.gw;</span>
+<span class="nc" id="L1458">            oldf = tmpPIterRef.oldf;</span>
+<span class="nc" id="L1459">            reltol = tmpPIterRef.reltol;</span>
+<span class="nc" id="L1460">            scxbnd = tmpPIterRef.scxbnd;</span>
+<span class="nc" id="L1461">            step = tmpPIterRef.step;</span>
+<span class="nc" id="L1462">            tol = tmpPIterRef.tol;</span>
+<span class="nc" id="L1463">            u = tmpPIterRef.u;</span>
+<span class="nc" id="L1464">            ref.alpha = tmpPIterRef.xmin;</span>
+<span class="nc" id="L1465">            xw = tmpPIterRef.xw;</span>
+
+            /* New best point ? */
+<span class="nc bnc" id="L1468" title="All 2 branches missed.">            if (ref.alpha == ualpha) {</span>
+<span class="nc" id="L1469">                ArrayMath.copy(tempgfull, newgfull);</span>
+            }
+<span class="nc" id="L1471">        }</span>
+
+<span class="nc bnc" id="L1473" title="All 2 branches missed.">        if (itest == getptc_rc.GETPTC_OK) {</span>
+            /* A successful search has been made */
+<span class="nc" id="L1475">            ref.f = fmin;</span>
+<span class="nc" id="L1476">            ArrayMath.axPlusY(ref.alpha, p, x);</span>
+<span class="nc" id="L1477">            ArrayMath.copy(newgfull, gfull);</span>
+<span class="nc" id="L1478">            return ls_rc.LS_OK;</span>
+<span class="nc bnc" id="L1479" title="All 2 branches missed.">        } else if (itcnt &gt; maxlsit) {</span>
+            /* Too many iterations ? */
+<span class="nc" id="L1481">            return ls_rc.LS_FAIL;</span>
+<span class="nc bnc" id="L1482" title="All 2 branches missed.">        } else if (itest != getptc_rc.GETPTC_EVAL) {</span>
+            /* If itest=GETPTC_FAIL or GETPTC_EINVAL a lower point could not be found */
+<span class="nc" id="L1484">            return ls_rc.LS_FAIL;</span>
+        } else {
+            /* Too many function evaluations */
+<span class="nc" id="L1487">            return ls_rc.LS_MAXFUN;</span>
+        }
+    }
+
+<span class="nc" id="L1491">    public class getptcInitRef {</span>
+
+        public double reltol;
+        public double abstol;
+        public double u;
+        public double fu;
+        public double gu;
+        public double xmin;
+        public double fmin;
+        public double gmin;
+        public double xw;
+        public double fw;
+        public double gw;
+        public double a;
+        public double b;
+        public double oldf;
+        public double b1;
+        public double scxbnd;
+        public double e;
+        public double step;
+        public double factor;
+        public boolean braktd;
+        public double gtest1;
+        public double gtest2;
+        public double tol;
+    }
+
+    /**
+     * getptc, an algorithm for finding a steplength, called repeatedly by
+     * routines which require a step length to be computed using cubic
+     * interpolation. The parameters contain information about the interval in
+     * which a lower point is to be found and from this getptc computes a point
+     * at which the function can be evaluated by the calling program.
+     */
+    public getptc_rc getptcInit(double tnytol, double eta, double rmu,
+            double xbnd, getptcInitRef ref) {
+        /* Check input parameters */
+<span class="nc bnc" id="L1528" title="All 6 branches missed.">        if (ref.u &lt;= 0.0 || xbnd &lt;= tnytol || ref.gu &gt; 0.0) {</span>
+<span class="nc" id="L1529">            return getptc_rc.GETPTC_EINVAL;</span>
+        }
+<span class="nc bnc" id="L1531" title="All 2 branches missed.">        if (xbnd &lt; ref.abstol) {</span>
+<span class="nc" id="L1532">            ref.abstol = xbnd;</span>
+        }
+<span class="nc" id="L1534">        ref.tol = ref.abstol;</span>
+
+        /* a and b define the interval of uncertainty, x and xw are points */
+        /* with lowest and second lowest function values so far obtained. */
+        /* initialize a,smin,xw at origin and corresponding values of */
+        /* function and projection of the gradient along direction of search */
+        /* at values for latest estimate at minimum. */
+<span class="nc" id="L1541">        ref.a = 0.0;</span>
+<span class="nc" id="L1542">        ref.xw = 0.0;</span>
+<span class="nc" id="L1543">        ref.xmin = 0.0;</span>
+<span class="nc" id="L1544">        ref.oldf = ref.fu;</span>
+<span class="nc" id="L1545">        ref.fmin = ref.fu;</span>
+<span class="nc" id="L1546">        ref.fw = ref.fu;</span>
+<span class="nc" id="L1547">        ref.gw = ref.gu;</span>
+<span class="nc" id="L1548">        ref.gmin = ref.gu;</span>
+<span class="nc" id="L1549">        ref.step = ref.u;</span>
+<span class="nc" id="L1550">        ref.factor = 5.0;</span>
+
+        /* The minimum has not yet been bracketed. */
+<span class="nc" id="L1553">        ref.braktd = false;</span>
+
+        /* Set up xbnd as a bound on the step to be taken. (xbnd is not computed */
+        /* explicitly but scxbnd is its scaled value.) Set the upper bound */
+        /* on the interval of uncertainty initially to xbnd + tol(xbnd). */
+<span class="nc" id="L1558">        ref.scxbnd = xbnd;</span>
+<span class="nc" id="L1559">        ref.b = ref.scxbnd + ref.reltol * Math.abs(ref.scxbnd) + ref.abstol;</span>
+<span class="nc" id="L1560">        ref.e = ref.b + ref.b;</span>
+<span class="nc" id="L1561">        ref.b1 = ref.b;</span>
+
+        /* Compute the constants required for the two convergence criteria. */
+<span class="nc" id="L1564">        ref.gtest1 = -rmu * ref.gu;</span>
+<span class="nc" id="L1565">        ref.gtest2 = -eta * ref.gu;</span>
+
+        /* If the step is too large, replace by the scaled bound (so as to */
+        /* compute the new point on the boundary). */
+<span class="nc bnc" id="L1569" title="All 2 branches missed.">        if (ref.step &gt;= ref.scxbnd) {</span>
+<span class="nc" id="L1570">            ref.step = ref.scxbnd;</span>
+            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
+<span class="nc" id="L1572">            ref.scxbnd -= (ref.reltol * Math.abs(xbnd) + ref.abstol) / (1.0 + ref.reltol);</span>
+        }
+<span class="nc" id="L1574">        ref.u = ref.step;</span>
+<span class="nc bnc" id="L1575" title="All 4 branches missed.">        if (Math.abs(ref.step) &lt; ref.tol &amp;&amp; ref.step &lt; 0.0) {</span>
+<span class="nc" id="L1576">            ref.u = -ref.tol;</span>
+        }
+<span class="nc bnc" id="L1578" title="All 4 branches missed.">        if (Math.abs(ref.step) &lt; ref.tol &amp;&amp; ref.step &gt;= 0.0) {</span>
+<span class="nc" id="L1579">            ref.u = ref.tol;</span>
+        }
+<span class="nc" id="L1581">        return getptc_rc.GETPTC_EVAL;</span>
+    }
+
+<span class="nc" id="L1584">    public class getptcIterRef {</span>
+
+        public double reltol;
+        public double abstol;
+        public double u;
+        public double fu;
+        public double gu;
+        public double xmin;
+        public double fmin;
+        public double gmin;
+        public double xw;
+        public double fw;
+        public double gw;
+        public double a;
+        public double b;
+        public double oldf;
+        public double b1;
+        public double scxbnd;
+        public double e;
+        public double step;
+        public double factor;
+        public boolean braktd;
+        public double gtest1;
+        public double gtest2;
+        public double tol;
+    }
+
+    public getptc_rc getptcIter(double big, double rtsmll, double tnytol,
+            double fpresn, double xbnd, getptcIterRef ref) {
+        ConvergenceCheck:
+        {
+            /* Update a,b,xw, and xmin */
+<span class="nc bnc" id="L1616" title="All 2 branches missed.">            if (ref.fu &lt;= ref.fmin) {</span>
+                /* If function value not increased, new point becomes next */
+                /* origin and other points are scaled accordingly. */
+<span class="nc" id="L1619">                double chordu = ref.oldf - (ref.xmin + ref.u) * ref.gtest1;</span>
+<span class="nc bnc" id="L1620" title="All 2 branches missed.">                if (ref.fu &gt; chordu) {</span>
+                    /* The new function value does not satisfy the sufficient decrease */
+                    /* criterion. prepare to move the upper bound to this point and */
+                    /* force the interpolation scheme to either bisect the interval of */
+                    /* uncertainty or take the linear interpolation step which estimates */
+                    /* the root of f(alpha)=chord(alpha). */
+
+<span class="nc" id="L1627">                    double chordm = ref.oldf - ref.xmin * ref.gtest1;</span>
+<span class="nc" id="L1628">                    ref.gu = -ref.gmin;</span>
+<span class="nc" id="L1629">                    double denom = chordm - ref.fmin;</span>
+<span class="nc bnc" id="L1630" title="All 2 branches missed.">                    if (Math.abs(denom) &lt; 1e-15) {</span>
+<span class="nc" id="L1631">                        denom = 1e-15;</span>
+<span class="nc bnc" id="L1632" title="All 2 branches missed.">                        if (chordm - ref.fmin &lt; 0.0) {</span>
+<span class="nc" id="L1633">                            denom = -denom;</span>
+                        }
+                    }
+<span class="nc bnc" id="L1636" title="All 2 branches missed.">                    if (ref.xmin != 0.0) {</span>
+<span class="nc" id="L1637">                        ref.gu = ref.gmin * (chordu - ref.fu) / denom;</span>
+                    }
+<span class="nc" id="L1639">                    ref.fu = 0.5 * ref.u * (ref.gmin + ref.gu) + ref.fmin;</span>
+<span class="nc bnc" id="L1640" title="All 2 branches missed.">                    if (ref.fu &lt; ref.fmin) {</span>
+<span class="nc" id="L1641">                        ref.fu = ref.fmin;</span>
+                    }
+<span class="nc" id="L1643">                } else {</span>
+<span class="nc" id="L1644">                    ref.fw = ref.fmin;</span>
+<span class="nc" id="L1645">                    ref.fmin = ref.fu;</span>
+<span class="nc" id="L1646">                    ref.gw = ref.gmin;</span>
+<span class="nc" id="L1647">                    ref.gmin = ref.gu;</span>
+<span class="nc" id="L1648">                    ref.xmin += ref.u;</span>
+<span class="nc" id="L1649">                    ref.a -= ref.u;</span>
+<span class="nc" id="L1650">                    ref.b -= ref.u;</span>
+<span class="nc" id="L1651">                    ref.xw = -ref.u;</span>
+<span class="nc" id="L1652">                    ref.scxbnd -= ref.u;</span>
+<span class="nc bnc" id="L1653" title="All 2 branches missed.">                    if (ref.gu &lt;= 0.0) {</span>
+<span class="nc" id="L1654">                        ref.a = 0.0;</span>
+                    } else {
+<span class="nc" id="L1656">                        ref.b = 0.0;</span>
+<span class="nc" id="L1657">                        ref.braktd = true;</span>
+                    }
+<span class="nc" id="L1659">                    ref.tol = Math.abs(ref.xmin) * ref.reltol + ref.abstol;</span>
+<span class="nc" id="L1660">                    break ConvergenceCheck;</span>
+                }
+            }
+
+            /* If function value increased, origin remains unchanged */
+            /* but new point may now qualify as w. */
+<span class="nc bnc" id="L1666" title="All 2 branches missed.">            if (ref.u &lt; 0.0) {</span>
+<span class="nc" id="L1667">                ref.a = ref.u;</span>
+            } else {
+<span class="nc" id="L1669">                ref.b = ref.u;</span>
+<span class="nc" id="L1670">                ref.braktd = true;</span>
+            }
+<span class="nc" id="L1672">            ref.xw = ref.u;</span>
+<span class="nc" id="L1673">            ref.fw = ref.fu;</span>
+<span class="nc" id="L1674">            ref.gw = ref.gu;</span>
+        }
+
+<span class="nc" id="L1677">        double twotol = ref.tol + ref.tol;</span>
+<span class="nc" id="L1678">        double xmidpt = 0.5 * (ref.a + ref.b);</span>
+
+        /* Check termination criteria */
+<span class="nc bnc" id="L1681" title="All 2 branches missed.">        boolean convrg = (Math.abs(xmidpt) &lt;= twotol - 0.5 * (ref.b - ref.a))</span>
+<span class="nc bnc" id="L1682" title="All 4 branches missed.">                || (Math.abs(ref.gmin) &lt;= ref.gtest2 &amp;&amp; ref.fmin &lt; ref.oldf</span>
+<span class="nc bnc" id="L1683" title="All 4 branches missed.">                &amp;&amp; ((Math.abs(ref.xmin - xbnd) &gt; ref.tol) || (!ref.braktd)));</span>
+<span class="nc bnc" id="L1684" title="All 2 branches missed.">        if (convrg) {</span>
+<span class="nc bnc" id="L1685" title="All 2 branches missed.">            if (ref.xmin != 0.0) {</span>
+<span class="nc" id="L1686">                return getptc_rc.GETPTC_OK;</span>
+            }
+
+            /*
+             * If the function has not been reduced, check to see that the relative
+             * change in f(x) is consistent with the estimate of the delta-
+             * unimodality constant, tol. If the change in f(x) is larger than
+             * expected, reduce the value of tol.
+             */
+<span class="nc bnc" id="L1695" title="All 2 branches missed.">            if (Math.abs(ref.oldf - ref.fw) &lt;= fpresn) {</span>
+<span class="nc" id="L1696">                return getptc_rc.GETPTC_FAIL;</span>
+            }
+<span class="nc" id="L1698">            ref.tol = 0.1 * ref.tol;</span>
+<span class="nc bnc" id="L1699" title="All 2 branches missed.">            if (ref.tol &lt; tnytol) {</span>
+<span class="nc" id="L1700">                return getptc_rc.GETPTC_FAIL;</span>
+            }
+<span class="nc" id="L1702">            ref.reltol = 0.1 * ref.reltol;</span>
+<span class="nc" id="L1703">            ref.abstol = 0.1 * ref.abstol;</span>
+<span class="nc" id="L1704">            twotol = 0.1 * twotol;</span>
+        }
+
+        /* Continue with the computation of a trial step length */
+<span class="nc" id="L1708">        double r = 0.0;</span>
+<span class="nc" id="L1709">        double q = 0.0;</span>
+<span class="nc" id="L1710">        double s = 0.0;</span>
+        MinimumFound:
+        {
+<span class="nc bnc" id="L1713" title="All 2 branches missed.">            if (Math.abs(ref.e) &gt; ref.tol) {</span>
+                /* Fit cubic through xmin and xw */
+<span class="nc" id="L1715">                r = 3.0 * (ref.fmin - ref.fw) / ref.xw + ref.gmin + ref.gw;</span>
+<span class="nc" id="L1716">                double absr = Math.abs(r);</span>
+<span class="nc" id="L1717">                q = absr;</span>
+<span class="nc bnc" id="L1718" title="All 4 branches missed.">                if (ref.gw != 0.0 &amp;&amp; ref.gmin != 0.0) {</span>
+                    /* Compute the square root of (r*r - gmin*gw) in a way
+                     which avoids underflow and overflow. */
+<span class="nc" id="L1721">                    double abgw = Math.abs(ref.gw);</span>
+<span class="nc" id="L1722">                    double abgmin = Math.abs(ref.gmin);</span>
+<span class="nc" id="L1723">                    s = Math.sqrt(abgmin) * Math.sqrt(abgw);</span>
+<span class="nc bnc" id="L1724" title="All 2 branches missed.">                    if (ref.gw / abgw * ref.gmin &gt; 0.0) {</span>
+<span class="nc bnc" id="L1725" title="All 4 branches missed.">                        if (r &gt;= s || r &lt;= -s) {</span>
+                            /* Compute the square root of r*r - s*s */
+<span class="nc" id="L1727">                            q = Math.sqrt(Math.abs(r + s)) * Math.sqrt(Math.abs(r - s));</span>
+                        } else {
+<span class="nc" id="L1729">                            r = 0.0;</span>
+<span class="nc" id="L1730">                            q = 0.0;</span>
+<span class="nc" id="L1731">                            break MinimumFound;</span>
+                        }
+                    } else {
+                        /* Compute the square root of r*r + s*s. */
+<span class="nc" id="L1735">                        double sumsq = 1.0;</span>
+<span class="nc" id="L1736">                        double p = 0.0;</span>
+                        double scale;
+<span class="nc bnc" id="L1738" title="All 2 branches missed.">                        if (absr &gt;= s) {</span>
+                            /* There is a possibility of underflow. */
+<span class="nc bnc" id="L1740" title="All 2 branches missed.">                            if (absr &gt; rtsmll) {</span>
+<span class="nc" id="L1741">                                p = absr * rtsmll;</span>
+                            }
+<span class="nc bnc" id="L1743" title="All 2 branches missed.">                            if (s &gt;= p) {</span>
+<span class="nc" id="L1744">                                double value = s / absr;</span>
+<span class="nc" id="L1745">                                sumsq = 1.0 + value * value;</span>
+                            }
+<span class="nc" id="L1747">                            scale = absr;</span>
+                        } else {
+                            /* There is a possibility of overflow. */
+<span class="nc bnc" id="L1750" title="All 2 branches missed.">                            if (s &gt; rtsmll) {</span>
+<span class="nc" id="L1751">                                p = s * rtsmll;</span>
+                            }
+<span class="nc bnc" id="L1753" title="All 2 branches missed.">                            if (absr &gt;= p) {</span>
+<span class="nc" id="L1754">                                double value = absr / s;</span>
+<span class="nc" id="L1755">                                sumsq = 1.0 + value * value;</span>
+                            }
+<span class="nc" id="L1757">                            scale = s;</span>
+                        }
+<span class="nc" id="L1759">                        sumsq = Math.sqrt(sumsq);</span>
+<span class="nc" id="L1760">                        q = big;</span>
+<span class="nc bnc" id="L1761" title="All 2 branches missed.">                        if (scale &lt; big / sumsq) {</span>
+<span class="nc" id="L1762">                            q = scale * sumsq;</span>
+                        }
+                    }
+                }
+
+                /* Compute the minimum of fitted cubic */
+<span class="nc bnc" id="L1768" title="All 2 branches missed.">                if (ref.xw &lt; 0.0) {</span>
+<span class="nc" id="L1769">                    q = -q;</span>
+                }
+<span class="nc" id="L1771">                s = ref.xw * (ref.gmin - r - q);</span>
+<span class="nc" id="L1772">                q = ref.gw - ref.gmin + q + q;</span>
+<span class="nc bnc" id="L1773" title="All 2 branches missed.">                if (q &gt; 0.0) {</span>
+<span class="nc" id="L1774">                    s = -s;</span>
+                }
+<span class="nc bnc" id="L1776" title="All 2 branches missed.">                if (q &lt;= 0.0) {</span>
+<span class="nc" id="L1777">                    q = -q;</span>
+                }
+<span class="nc" id="L1779">                r = ref.e;</span>
+<span class="nc bnc" id="L1780" title="All 4 branches missed.">                if (ref.b1 != ref.step || ref.braktd) {</span>
+<span class="nc" id="L1781">                    ref.e = ref.step;</span>
+                }
+            }
+        }
+
+        /* Construct an artificial bound on the estimated steplength */
+<span class="nc" id="L1787">        double a1 = ref.a;</span>
+<span class="nc" id="L1788">        ref.b1 = ref.b;</span>
+<span class="nc" id="L1789">        ref.step = xmidpt;</span>
+<span class="nc bnc" id="L1790" title="All 10 branches missed.">        if ((!ref.braktd) || ((ref.a == 0.0 &amp;&amp; ref.xw &lt; 0.0) || (ref.b == 0.0 &amp;&amp; ref.xw &gt; 0.0))) {</span>
+<span class="nc bnc" id="L1791" title="All 2 branches missed.">            if (ref.braktd) {</span>
+                /* If the minimum is not bracketed by 0 and xw the step must lie
+                 within (a1,b1). */
+<span class="nc" id="L1794">                double d1 = ref.xw;</span>
+<span class="nc" id="L1795">                double d2 = ref.a;</span>
+<span class="nc bnc" id="L1796" title="All 2 branches missed.">                if (ref.a == 0.0) {</span>
+<span class="nc" id="L1797">                    d2 = ref.b;</span>
+                }
+                /* This line might be : */
+                /* if (*a == 0.0) d2 = *e */
+<span class="nc" id="L1801">                ref.u = -d1 / d2;</span>
+<span class="nc" id="L1802">                ref.step = 5.0 * d2 * (0.1 + 1.0 / ref.u) / 11.0;</span>
+<span class="nc bnc" id="L1803" title="All 2 branches missed.">                if (ref.u &lt; 1.0) {</span>
+<span class="nc" id="L1804">                    ref.step = 0.5 * d2 * Math.sqrt(ref.u);</span>
+                }
+<span class="nc" id="L1806">            } else {</span>
+<span class="nc" id="L1807">                ref.step = -ref.factor * ref.xw;</span>
+<span class="nc bnc" id="L1808" title="All 2 branches missed.">                if (ref.step &gt; ref.scxbnd) {</span>
+<span class="nc" id="L1809">                    ref.step = ref.scxbnd;</span>
+                }
+<span class="nc bnc" id="L1811" title="All 2 branches missed.">                if (ref.step != ref.scxbnd) {</span>
+<span class="nc" id="L1812">                    ref.factor = 5.0 * ref.factor;</span>
+                }
+            }
+            /* If the minimum is bracketed by 0 and xw the step must lie within (a,b) */
+<span class="nc bnc" id="L1816" title="All 2 branches missed.">            if (ref.step &lt;= 0.0) {</span>
+<span class="nc" id="L1817">                a1 = ref.step;</span>
+            }
+<span class="nc bnc" id="L1819" title="All 2 branches missed.">            if (ref.step &gt; 0.0) {</span>
+<span class="nc" id="L1820">                ref.b1 = ref.step;</span>
+            }
+        }
+
+        /*
+         * Reject the step obtained by interpolation if it lies outside the
+         * required interval or it is greater than half the step obtained
+         * during the last-but-one iteration.
+         */
+<span class="nc bnc" id="L1829" title="All 6 branches missed.">        if (Math.abs(s) &lt;= Math.abs(0.5 * q * r) || s &lt;= q * a1 || s &gt;= q * ref.b1) {</span>
+<span class="nc" id="L1830">            ref.e = ref.b - ref.a;</span>
+        } else {
+            /* A cubic interpolation step */
+<span class="nc" id="L1833">            ref.step = s / q;</span>
+
+            /* The function must not be evaluated too close to a or b. */
+<span class="nc bnc" id="L1836" title="All 4 branches missed.">            if (ref.step - ref.a &lt; twotol || ref.b - ref.step &lt; twotol) {</span>
+<span class="nc bnc" id="L1837" title="All 2 branches missed.">                if (xmidpt &lt;= 0.0) {</span>
+<span class="nc" id="L1838">                    ref.step = -ref.tol;</span>
+                } else {
+<span class="nc" id="L1840">                    ref.step = ref.tol;</span>
+                }
+            }
+        }
+
+        /* If the step is too large, replace by the scaled bound (so as to */
+        /* compute the new point on the boundary). */
+<span class="nc bnc" id="L1847" title="All 2 branches missed.">        if (ref.step &gt;= ref.scxbnd) {</span>
+<span class="nc" id="L1848">            ref.step = ref.scxbnd;</span>
+            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
+<span class="nc" id="L1850">            ref.scxbnd -= (ref.reltol * Math.abs(xbnd) + ref.abstol) / (1.0 + ref.reltol);</span>
+        }
+<span class="nc" id="L1852">        ref.u = ref.step;</span>
+<span class="nc bnc" id="L1853" title="All 4 branches missed.">        if (Math.abs(ref.step) &lt; ref.tol &amp;&amp; ref.step &lt; 0.0) {</span>
+<span class="nc" id="L1854">            ref.u = -ref.tol;</span>
+        }
+<span class="nc bnc" id="L1856" title="All 4 branches missed.">        if (Math.abs(ref.step) &lt; ref.tol &amp;&amp; ref.step &gt;= 0.0) {</span>
+<span class="nc" id="L1857">            ref.u = ref.tol;</span>
+        }
+<span class="nc" id="L1859">        return getptc_rc.GETPTC_EVAL;</span>
+    }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.4.201502262128</span></div></body></html>

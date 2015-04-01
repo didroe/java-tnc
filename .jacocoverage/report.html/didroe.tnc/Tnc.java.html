@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Tnc.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCoverage analysis of project &quot;Tnc&quot; (powered by JaCoCo from EclEmma)</a> &gt; <a href="index.source.html" class="el_package">didroe.tnc</a> &gt; <span class="el_source">Tnc.java</span></div><h1>Tnc.java</h1><pre class="source lang-java linenums">/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package didroe.tnc;
+
+/**
+ * Builder for TNC inputs
+ * @author Did
+ */
+<span class="nc" id="L12">public class Tnc {</span>
+    
+    private TncFunction function;
+    private TncImpl.TncCallback callback;
+    private double[] initialGuess;
+    private double[] lowerBounds;
+    private double[] upperBounds;
+    private double[] scale;
+    private double[] offset;
+<span class="nc" id="L21">    private int maxConjugateGradientIterations = -1;</span>
+<span class="nc" id="L22">    private double eta = -1;</span>
+    private Integer maxFunctionEvaluations;
+<span class="nc" id="L24">    private double maxLinearSearchStep = 0;</span>
+<span class="nc" id="L25">    private double accuracy = 0;</span>
+<span class="nc" id="L26">    private double minFunctionValueEstimate = 0;</span>
+<span class="nc" id="L27">    private double valuePrecisionGoal = -1;</span>
+<span class="nc" id="L28">    private double parameterPrecisionGoal = -1;</span>
+<span class="nc" id="L29">    private double gradientPrecisionGoal = -1;</span>
+<span class="nc" id="L30">    private double rescale = -1;</span>
+    
+    /**
+     * @param function The function to minimize
+     */
+    public Tnc function(TncFunction function) {
+<span class="nc" id="L36">        this.function = function;</span>
+<span class="nc" id="L37">        return this;</span>
+    }
+    
+    /**
+     * @param callback A callback to be invoked at each iteration
+     */
+    public Tnc callback(TncImpl.TncCallback callback) {
+<span class="nc" id="L44">        this.callback = callback;</span>
+<span class="nc" id="L45">        return this;</span>
+    }
+
+    /**
+     * @param initialGuess Initial estimate of the minimum
+     */
+    public Tnc initialGuess(double[] initialGuess) {
+<span class="nc" id="L52">        this.initialGuess = initialGuess;</span>
+<span class="nc" id="L53">        return this;</span>
+    }
+    
+    /**
+     * @param lowerBounds Lower bounds for the function parameters. Set an entry
+     * to Double.NEGATIVE_INFINITY for no bound on that parameter.
+     */
+    public Tnc lowerBounds(double[] lowerBounds) {
+<span class="nc" id="L61">        this.lowerBounds = lowerBounds;</span>
+<span class="nc" id="L62">        return this;</span>
+    }
+    
+    /**
+     * @param upperBounds Upper bounds for the function parameters. Set an entry
+     * to Double.POSITIVE_INFINITY for no bound on that parameter.
+     */
+    public Tnc upperBounds(double[] upperBounds) {
+<span class="nc" id="L70">        this.upperBounds = upperBounds;</span>
+<span class="nc" id="L71">        return this;</span>
+    }
+    
+    /**
+     * @param scale Scaling factors to apply to each variable. If null, the
+     * factors are up-low for interval bounded variables and 1+|x| for the others.
+     */
+    public Tnc scale(double[] scale) {
+<span class="nc" id="L79">        this.scale = scale;</span>
+<span class="nc" id="L80">        return this;</span>
+    }
+    
+    /**
+     * @param offset Value to subtract from each variable. If null, the offsets 
+     * are (up+low)/2 for interval bounded variables and x for the others.
+     */
+    public Tnc offset(double[] offset) {
+<span class="nc" id="L88">        this.offset = offset;</span>
+<span class="nc" id="L89">        return this;</span>
+    }
+
+    /**
+     * @param maxConjugateGradientIterations The maximum number of hessian*vector 
+     * evaluations per main iteration. If maxCGit == 0, the direction chosen is
+     * -gradient. If maxCGit &amp;lt; 0, maxCGit is set to max(1, min(50,n/2)).  
+     * Defaults to -1.
+     */
+    public Tnc maxConjugateGradientIterations(int maxConjugateGradientIterations) {
+<span class="nc" id="L99">        this.maxConjugateGradientIterations = maxConjugateGradientIterations;</span>
+<span class="nc" id="L100">        return this;</span>
+    }
+    
+    /**
+     * @param eta Severity of the line search. if &amp;lt; 0 or &amp;gt; 1, set to 0.25.
+     * Defaults to -1.
+     */
+    public Tnc eta(double eta) {
+<span class="nc" id="L108">       this.eta = eta;</span>
+<span class="nc" id="L109">       return this;</span>
+    }
+    
+    /**
+     * @param maxFunctionEvaluations Maximum number of function evaluations. 
+     * Defaults to max(100, 10*n) where n is the number of parameters.
+     */
+    public Tnc maxFunctionEvaluations(int maxFunctionEvaluations) {
+<span class="nc" id="L117">        this.maxFunctionEvaluations = maxFunctionEvaluations;</span>
+<span class="nc" id="L118">        return this;</span>
+    }
+    
+    /**
+     * @param maxLinearSearchStep Maximum step for the line search. May be 
+     * increased during minimization. If too small, it will be set to 10.0. 
+     * Defaults to 0.
+     */
+    public Tnc maxLinearSearchStep(double maxLinearSearchStep) {
+<span class="nc" id="L127">        this.maxLinearSearchStep = maxLinearSearchStep;</span>
+<span class="nc" id="L128">        return this;</span>
+    }
+    
+    /**
+     * @param accuracy Relative precision for finite difference calculations.
+     * If &amp;lt;= machine_precision, set to sqrt(machine_precision).
+     * Defaults to 0.
+     */
+    public Tnc accuracy(double accuracy) {
+<span class="nc" id="L137">        this.accuracy = accuracy;</span>
+<span class="nc" id="L138">        return this;</span>
+    }
+    
+    /**
+     * @param minFunctionValueEstimate Minimum function value estimate. Defaults to 0.
+     */
+    public Tnc minFunctionValueEstimate(double minFunctionValueEstimate) {
+<span class="nc" id="L145">        this.minFunctionValueEstimate = minFunctionValueEstimate;</span>
+<span class="nc" id="L146">        return this;</span>
+    }
+    
+    /**
+     * @param valuePrecisionGoal Precision goal for the value of the function in
+     * the stopping criterion. If &amp;lt; 0.0, set to 0.0. Defaults to -1.
+     */
+    public Tnc valuePrecisionGoal(double valuePrecisionGoal) {
+<span class="nc" id="L154">        this.valuePrecisionGoal = valuePrecisionGoal;</span>
+<span class="nc" id="L155">        return this;</span>
+    }
+    
+    /**
+     * @param parameterPrecisionGoal Precision goal for the value of parameters 
+     * in the stopping criterion (after applying scaling factors). If &amp;lt; 0.0, 
+     * set to sqrt(machine_precision). Defaults to -1.
+     */
+    public Tnc parameterPrecisionGoal(double parameterPrecisionGoal) {
+<span class="nc" id="L164">        this.parameterPrecisionGoal = parameterPrecisionGoal;</span>
+<span class="nc" id="L165">        return this;</span>
+    }
+
+    /**
+     * @param gradientPrecisionGoal Precision goal for the value of the 
+     * projected gradient in the stopping criterion (after applying scaling 
+     * factors). If &amp;lt; 0.0, set to 1e-2 * sqrt(accuracy). Setting it to 0.0 
+     * is not recommended. Defaults to -1.
+     */
+    public Tnc gradientPrecisionGoal(double gradientPrecisionGoal) {
+<span class="nc" id="L175">        this.gradientPrecisionGoal = gradientPrecisionGoal;</span>
+<span class="nc" id="L176">        return this;</span>
+    }
+    
+    /**
+     * @param rescale Scaling factor (in log10) used to trigger function value
+     * rescaling. If 0, rescale at each iteration. If a large value, never 
+     * rescale. If &amp;lt; 0, rescale is set to 1.3. Defaults to -1.
+     */
+    public Tnc rescale(double rescale) {
+<span class="nc" id="L185">        this.rescale = rescale;</span>
+<span class="nc" id="L186">        return this;</span>
+    }
+        
+    private double[] copyArray(double[] src) {
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (src == null) {</span>
+<span class="nc" id="L191">            return null;</span>
+        }
+        
+<span class="nc" id="L194">        double[] dest = new double[src.length];</span>
+<span class="nc" id="L195">        System.arraycopy(src, 0, dest, 0, src.length);</span>
+<span class="nc" id="L196">        return dest;</span>
+    }
+    
+    public void validate() {
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (function == null) {</span>
+<span class="nc" id="L201">            throw new IllegalArgumentException(&quot;Function argument must be specified&quot;);</span>
+        }
+        
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        if (initialGuess == null) {</span>
+<span class="nc" id="L205">            throw new IllegalArgumentException(&quot;Initial guess must be specified&quot;);</span>
+        }
+        
+        // Check lower bound array length matches
+<span class="nc bnc" id="L209" title="All 4 branches missed.">        if (lowerBounds != null &amp;&amp; lowerBounds.length != initialGuess.length) {</span>
+<span class="nc" id="L210">            throw new IllegalArgumentException(&quot;Lower bounds length does not match initial guess&quot;);</span>
+        }
+
+        // Check upper bound array length matches
+<span class="nc bnc" id="L214" title="All 4 branches missed.">        if (upperBounds != null &amp;&amp; upperBounds.length != initialGuess.length) {</span>
+<span class="nc" id="L215">            throw new IllegalArgumentException(&quot;Upper bounds length does not match initial guess&quot;);</span>
+        }
+
+        // Check scale array length matches
+<span class="nc bnc" id="L219" title="All 4 branches missed.">        if (scale != null &amp;&amp; scale.length != initialGuess.length) {</span>
+<span class="nc" id="L220">            throw new IllegalArgumentException(&quot;Scale length does not match initial guess&quot;);</span>
+        }
+
+        // Check offset array length matches
+<span class="nc bnc" id="L224" title="All 4 branches missed.">        if (offset != null &amp;&amp; offset.length != initialGuess.length) {</span>
+<span class="nc" id="L225">            throw new IllegalArgumentException(&quot;Offset length does not match initial guess&quot;);</span>
+        }
+<span class="nc" id="L227">    }</span>
+    
+    public TncResult minimize() {
+<span class="nc" id="L230">        validate();</span>
+        
+<span class="nc" id="L232">        double[] x = copyArray(initialGuess);</span>
+        
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        int effectiveMaxFunctionEvaluations = (maxFunctionEvaluations != null ? </span>
+<span class="nc" id="L235">                maxFunctionEvaluations : Math.max(100, 10 * initialGuess.length));</span>
+        
+<span class="nc" id="L237">        TncRef ref = new TncRef();</span>
+<span class="nc" id="L238">        TncImpl t = new TncImpl();</span>
+<span class="nc" id="L239">        double[] g = new double[initialGuess.length];</span>
+<span class="nc" id="L240">        t.tnc(initialGuess.length, x, g, function, copyArray(lowerBounds), </span>
+<span class="nc" id="L241">                copyArray(upperBounds), copyArray(scale), copyArray(offset), </span>
+<span class="nc" id="L242">                TncImpl.tnc_message.allMessages(), maxConjugateGradientIterations, </span>
+                effectiveMaxFunctionEvaluations, eta, maxLinearSearchStep, 
+                accuracy, minFunctionValueEstimate, valuePrecisionGoal, 
+                parameterPrecisionGoal, gradientPrecisionGoal, rescale, 
+                callback, ref);
+<span class="nc" id="L247">        return new TncResult(x, ref.f, g, ref.nfeval, ref.niter);</span>
+    }
+    
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.4.201502262128</span></div></body></html>
