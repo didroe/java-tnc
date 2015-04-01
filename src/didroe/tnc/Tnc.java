@@ -1,7 +1,41 @@
 /*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
+ * ORIGINAL SCIPY LICENSE HEADER:
+ * Copyright (c) 2002-2005, Jean-Sebastien Roy (js@jeannot.org)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*
+ * This software is an implementation of TNBC, a truncated newton minimization
+ * package originally developed by Stephen G. Nash in Fortran.
+ *
+ * The original source code can be found at :
+ * http://iris.gmu.edu/~snash/nash/software/software.html
+ *
+ * Copyright for the original TNBC fortran routines:
+ *
+ *   TRUNCATED-NEWTON METHOD:  SUBROUTINES
+ *     WRITTEN BY:  STEPHEN G. NASH
+ *           SCHOOL OF INFORMATION TECHNOLOGY & ENGINEERING
+ *           GEORGE MASON UNIVERSITY
+ *           FAIRFAX, VA 22030
  */
 package didroe.tnc;
 
