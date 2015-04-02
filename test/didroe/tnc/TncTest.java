@@ -20,10 +20,21 @@ import static org.junit.Assert.*;
 public class TncTest {
 
     /**
+     * Assert that evaluating the function with the expected and actual 
+     * parameters gives the same value.
+     */
+    private void assertExpectedResult(TncFunction function, TncResult result, 
+            double[] expectedX) {
+        double[] dummy = new double[expectedX.length];
+        assertEquals(function.evaluate(expectedX, dummy), 
+                function.evaluate(result.parameters(), dummy), 1e-8);
+    }
+    
+    /**
      * @return Test setup for SciPy tests 1 and 2
      */
-    private Tnc scipySetup1And2() {
-        TncFunction function = (double[] x, double[] gradient) -> {
+    private TncFunction scipy1And2Function() {
+        return (double[] x, double[] gradient) -> {
             double a = 100.0;
 
             gradient[1] = 2.0 * a * (x[1] - Math.pow(x[0], 2));
@@ -32,28 +43,30 @@ public class TncTest {
             return (a * Math.pow((x[1] - Math.pow(x[0], 2)), 2))
                     + Math.pow(1.0 - x[0], 2);
         };
-
-        return new Tnc()
-                .maxFunctionEvaluations(200)
-                .function(function);
     }
 
     @Test
     public void testScipy1() {
-        TncResult result = scipySetup1And2()
-                .initialGuess(new double[]{-2.0, 1.0})
-                .lowerBounds(new double[]{Double.NEGATIVE_INFINITY, -1.5})
+        TncFunction function = scipy1And2Function();
+        TncResult result = new Tnc()
+                .maxFunctionEvaluations(200)
+                .function(function)
+                .initialGuess(new double[]{ -2.0, 1.0 })
+                .lowerBounds(new double[]{ Double.NEGATIVE_INFINITY, -1.5 })
                 .minimize();
-        assertArrayEquals(new double[]{1.0, 1.0}, result.parameters(), 1e-5);
+        assertExpectedResult(function, result, new double[]{ 1.0, 1.0 });
     }
 
     @Test
     public void testScipy2() {
-        TncResult result = scipySetup1And2()
-                .initialGuess(new double[]{-2.0, 1.0})
-                .lowerBounds(new double[]{Double.NEGATIVE_INFINITY, 1.5})
+        TncFunction function = scipy1And2Function();
+        TncResult result = new Tnc()
+                .maxFunctionEvaluations(200)
+                .function(function)
+                .initialGuess(new double[]{ -2.0, 1.0 })
+                .lowerBounds(new double[]{ Double.NEGATIVE_INFINITY, 1.5 })
                 .minimize();
-        assertArrayEquals(new double[]{-1.2210262419616387, 1.5}, result.parameters(), 1e-8);
+        assertExpectedResult(function, result, new double[]{ -1.2210262419616387, 1.5 });
     }
 
     @Test
@@ -68,10 +81,10 @@ public class TncTest {
         TncResult result = new Tnc()
                 .maxFunctionEvaluations(200)
                 .function(function)
-                .initialGuess(new double[]{10.0, 1.0})
-                .lowerBounds(new double[]{Double.NEGATIVE_INFINITY, 0.0})
+                .initialGuess(new double[]{ 10.0, 1.0 })
+                .lowerBounds(new double[]{ Double.NEGATIVE_INFINITY, 0.0 })
                 .minimize();
-        assertArrayEquals(new double[]{0.0, 0.0}, result.parameters(), 1e-8);
+        assertExpectedResult(function, result, new double[]{ 0.0, 0.0 });
     }
 
     @Test
@@ -86,10 +99,10 @@ public class TncTest {
         TncResult result = new Tnc()
                 .maxFunctionEvaluations(200)
                 .function(function)
-                .initialGuess(new double[]{1.125, 0.125})
-                .lowerBounds(new double[]{1.0, 0.0})
+                .initialGuess(new double[]{ 1.125, 0.125 })
+                .lowerBounds(new double[]{ 1.0, 0.0 })
                 .minimize();
-        assertArrayEquals(new double[]{1.0, 0.0}, result.parameters(), 1e-8);
+        assertExpectedResult(function, result, new double[]{ 1.0, 0.0 });
     }
 
     @Test
@@ -107,18 +120,18 @@ public class TncTest {
         TncResult result = new Tnc()
                 .maxFunctionEvaluations(200)
                 .function(function)
-                .initialGuess(new double[]{0.0, 0.0})
-                .lowerBounds(new double[]{-1.5, -3.0})
-                .upperBounds(new double[]{4.0, 3.0})
+                .initialGuess(new double[]{ 0.0, 0.0 })
+                .lowerBounds(new double[]{ -1.5, -3.0 })
+                .upperBounds(new double[]{ 4.0, 3.0 })
                 .minimize();
-        assertArrayEquals(new double[]{-0.54719755119659763, -1.5471975511965976},
-                result.parameters(), 1e-8);
+        assertExpectedResult(function, result, 
+                new double[]{ -0.54719755119659763, -1.5471975511965976 });
     }
 
     @Test
     public void testScipy38() {
         TncFunction function = (double[] x, double[] gradient) -> {
-            gradient[0] = ((-400.0 * x[0] * (x[1] - Math.pow(x[0], 2)))
+            gradient[0] = ((-400.0 * x[0] * (x[1] - Math.pow(x[0], 2))) 
                     - (2.0 * (1.0 - x[0]))) * 1.0e-5;
             gradient[1] = ((200.0 * (x[1] - Math.pow(x[0], 2)))
                     + (20.2 * (x[1] - 1.0)) + (19.8 * (x[3] - 1.0))) * 1.0e-5;
@@ -127,24 +140,20 @@ public class TncTest {
             gradient[3] = ((180.0 * (x[3] - Math.pow(x[2], 2)))
                     + (20.2 * (x[3] - 1.0)) + (19.8 * (x[1] - 1.0))) * 1.0e-5;
 
-            return ((100.0 * Math.pow(x[1] - Math.pow(x[0], 2), 2))
-                    + Math.pow(1.0 - x[0], 2)
-                    + (90.0 * Math.pow(x[3] - Math.pow(x[2], 2), 2))
-                    + Math.pow(1.0 - x[2], 2)
-                    + (10.1 * (Math.pow(x[1] - 1.0, 2)) + Math.pow(x[3] - 1.0, 2))
+            return ((100.0 * Math.pow(x[1] - Math.pow(x[0], 2), 2)) + Math.pow(1.0 - x[0], 2)
+                    + (90.0 * Math.pow(x[3] - Math.pow(x[2], 2), 2)) + Math.pow(1.0 - x[2], 2)
+                    + (10.1 * (Math.pow(x[1] - 1.0, 2) + Math.pow(x[3] - 1.0, 2)))
                     + (19.8 * (x[1] - 1.0) * (x[3] - 1.0))) * 1.0e-5;
         };
 
         TncResult result = new Tnc()
                 .maxFunctionEvaluations(200)
                 .function(function)
-                .initialGuess(new double[]{-3.0, -1.0, -3.0, -1.0})
-                .lowerBounds(new double[]{-10.0, -10.0, -10.0, -10.0})
-                .upperBounds(new double[]{10.0, 10.0, 10.0, 10.0})
+                .initialGuess(new double[]{ -3.0, -1.0, -3.0, -1.0 })
+                .lowerBounds(new double[]{ -10.0, -10.0, -10.0, -10.0 })
+                .upperBounds(new double[]{ 10.0, 10.0, 10.0, 10.0 })
                 .minimize();
-        // TODO: Work out why this doesn't match. LINEAR SEARCH FAILED
-        assertArrayEquals(new double[]{1.0, 1.0, 1.0, 1.0},
-                result.parameters(), 1e-8);
+        assertExpectedResult(function, result, new double[]{ 1.0, 1.0, 1.0, 1.0 });
     }
 
     @Test
@@ -162,11 +171,10 @@ public class TncTest {
         TncResult result = new Tnc()
                 .maxFunctionEvaluations(200)
                 .function(function)
-                .initialGuess(new double[]{2.0, 2.0, 2.0, 2.0, 2.0})
-                .lowerBounds(new double[]{0.0, 0.0, 0.0, 0.0, 0.0})
-                .upperBounds(new double[]{1.0, 2.0, 3.0, 4.0, 5.0})
+                .initialGuess(new double[]{ 2.0, 2.0, 2.0, 2.0, 2.0 })
+                .lowerBounds(new double[]{ 0.0, 0.0, 0.0, 0.0, 0.0 })
+                .upperBounds(new double[]{ 1.0, 2.0, 3.0, 4.0, 5.0 })
                 .minimize();
-        assertArrayEquals(new double[]{1.0, 2.0, 3.0, 4.0, 5.0},
-                result.parameters(), 1e-8);
+        assertExpectedResult(function, result, new double[]{ 1.0, 2.0, 3.0, 4.0, 5.0 });
     }
 }
