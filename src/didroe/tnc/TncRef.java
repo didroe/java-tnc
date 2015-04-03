@@ -10,6 +10,5 @@ package didroe.tnc;
 public class TncRef {
 
     public double f;
-    public int niter;
 
 }

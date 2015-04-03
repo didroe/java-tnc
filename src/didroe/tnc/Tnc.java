@@ -192,38 +192,38 @@ public class Tnc {
         return dest;
     }
 
-    private void validateInputs() throws TncInputError {
+    private void validateInputs() throws InputError {
         if (function == null) {
-            throw new TncInputError("Function argument must be specified");
+            throw new InputError("Function argument must be specified");
         }
 
         if (initialGuess == null) {
-            throw new TncInputError("Initial guess must be specified");
+            throw new InputError("Initial guess must be specified");
         }
 
         if (initialGuess.length == 0) {
-            throw new TncInputError("There must be at least one parameter");
+            throw new InputError("There must be at least one parameter");
         }
 
         if (lowerBounds != null && lowerBounds.length != initialGuess.length) {
-            throw new TncInputError("Lower bounds length does not match initial guess");
+            throw new InputError("Lower bounds length does not match initial guess");
         }
 
         if (upperBounds != null && upperBounds.length != initialGuess.length) {
-            throw new TncInputError("Upper bounds length does not match initial guess");
+            throw new InputError("Upper bounds length does not match initial guess");
         }
 
         if (scale != null && scale.length != initialGuess.length) {
-            throw new TncInputError("Scale length does not match initial guess");
+            throw new InputError("Scale length does not match initial guess");
         }
 
         if (offset != null && offset.length != initialGuess.length) {
-            throw new TncInputError("Offset length does not match initial guess");
+            throw new InputError("Offset length does not match initial guess");
         }
 
     }
 
-    public TncResult minimize() throws TncInputError {
+    public TncResult minimize() throws InputError {
         validateInputs();
 
         double[] effectiveLowerBounds = copyArray(lowerBounds);
@@ -240,7 +240,7 @@ public class Tnc {
 
         for (int i = 0; i < initialGuess.length; i++) {
             if (effectiveLowerBounds[i] > effectiveUpperBounds[i]) {
-                throw new TncInputError("One or more lower bounds are greater than the upper bounds");
+                throw new InputError("One or more lower bounds are greater than the upper bounds");
             }
         }
 
@@ -248,10 +248,8 @@ public class Tnc {
                 ? maxFunctionEvaluations : Math.max(100, 10 * initialGuess.length));
 
         if (effectiveMaxFunctionEvaluations < 1) {
-            throw new TncInputError("Max function evaluations must be >= 1");
+            throw new InputError("Max function evaluations must be >= 1");
         }
-
-        double[] x = copyArray(initialGuess);
 
         int numConstantParams = 0;
         for (int i = 0; i < initialGuess.length; i++) {
@@ -262,20 +260,22 @@ public class Tnc {
         }
 
         if (numConstantParams == initialGuess.length) {
-            throw new TncInputError("Lower bounds are equal to upper bounds or scale is zero for all parameters");
+            throw new InputError("Lower bounds are equal to upper bounds or scale is zero for all parameters");
         }
+
+        // Starting parameters are the initial guess constrained to the bounds
+        double[] x = copyArray(initialGuess);
+        ArrayMath.clip(x, effectiveLowerBounds, effectiveUpperBounds);
 
         TncRef ref = new TncRef();
         TncImpl t = new TncImpl();
         double[] g = new double[initialGuess.length];
         t.tnc(initialGuess.length, x, g, function, effectiveLowerBounds,
                 effectiveUpperBounds, copyArray(scale), copyArray(offset),
-                TncImpl.tnc_message.allMessages(), maxConjugateGradientIterations,
-                effectiveMaxFunctionEvaluations, eta, maxLinearSearchStep,
-                accuracy, minFunctionValueEstimate, valuePrecisionGoal,
-                parameterPrecisionGoal, gradientPrecisionGoal, rescale,
-                callback, ref);
-        return new TncResult(x, ref.f, g, t.numFuncEvaluations, ref.niter);
+                maxConjugateGradientIterations, effectiveMaxFunctionEvaluations, eta, 
+                maxLinearSearchStep, accuracy, minFunctionValueEstimate, valuePrecisionGoal,
+                parameterPrecisionGoal, gradientPrecisionGoal, rescale, callback, ref);
+        return new TncResult(x, ref.f, g, t.functionEvaluator.getNumEvaluations(), t.numIterations);
     }
 
 }

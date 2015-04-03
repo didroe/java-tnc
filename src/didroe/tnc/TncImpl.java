@@ -3,7 +3,8 @@
  */
 package didroe.tnc;
 
-import java.util.EnumSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -11,76 +12,32 @@ import java.util.EnumSet;
  */
 public class TncImpl {
 
-    /**
-     * Verbosity level
-     */
-    public enum tnc_message {
+    private final Logger logger = LoggerFactory.getLogger(TncImpl.class);
 
-        /**
-         * No messages
-         */
-        TNC_MSG_NONE,
-        /**
-         * One line per iteration
-         */
-        TNC_MSG_ITER,
-        /**
-         * Informational messages
-         */
-        TNC_MSG_INFO,
-        /**
-         * Exit reasons
-         */
-        TNC_MSG_EXIT;
+    class FunctionEvaluator {
 
-        /**
-         * @return Set of all messages
-         */
-        public static EnumSet<tnc_message> allMessages() {
-            EnumSet<tnc_message> result = EnumSet.of(TNC_MSG_ITER, TNC_MSG_INFO,
-                    TNC_MSG_EXIT);
-            return result;
-        }
-    }
+        private int numEvaluations = 0;
 
-    /**
-     * Possible return values for tnc
-     */
-    public enum tnc_rc {
+        private final TncFunction function;
 
-        /**
-         * Local minima reached (|pg| ~= 0)
-         */
-        TNC_LOCALMINIMUM("Local minima reached (|pg| ~= 0)"),
-        /**
-         * Converged (|f_n-f_(n-1)| ~= 0)
-         */
-        TNC_FCONVERGED("Converged (|f_n-f_(n-1)| ~= 0)"),
-        /**
-         * Converged (|x_n-x_(n-1)| ~= 0)
-         */
-        TNC_XCONVERGED("Converged (|x_n-x_(n-1)| ~= 0)"),
-        /**
-         * Max. number of function evaluations reached
-         */
-        TNC_MAXFUN("Maximum number of function evaluations reached"),
-        /**
-         * Linear search failed
-         */
-        TNC_LSFAIL("Linear search failed"),
-        /**
-         * Unable to progress
-         */
-        TNC_NOPROGRESS("Unable to progress");
+        private final int maxEvaluations;
 
-        private String message;
-
-        public String getMessage() {
-            return message;
+        public FunctionEvaluator(TncFunction function, int maxEvaluations) {
+            this.function = function;
+            this.maxEvaluations = maxEvaluations;
         }
 
-        private tnc_rc(String message) {
-            this.message = message;
+        public double evaluate(double[] x, double[] g) {
+            if (numEvaluations >= maxEvaluations) {
+                throw new MinimizationError("Maximum number of function evaluations reached");
+            }
+
+            numEvaluations++;
+            return function.evaluate(x, g);
+        }
+
+        public int getNumEvaluations() {
+            return numEvaluations;
         }
     }
 
@@ -92,49 +49,9 @@ public class TncImpl {
         public void tnc_callback(double[] x);
     }
 
-    /**
-     * getptc return codes
-     */
-    public enum getptc_rc {
-
-        /**
-         * Suitable point found
-         */
-        GETPTC_OK,
-        /**
-         * Function evaluation required
-         */
-        GETPTC_EVAL,
-        /**
-         * Bad input values
-         */
-        GETPTC_EINVAL,
-        /**
-         * No suitable point found
-         */
-        GETPTC_FAIL;
-    }
-
-    /**
-     * linearSearch return codes
-     */
-    public enum ls_rc {
-
-        /**
-         * Suitable point found
-         */
-        LS_OK,
-        /**
-         * Max. number of function evaluations reach
-         */
-        LS_MAXFUN,
-        /**
-         * No suitable point found
-         */
-        LS_FAIL;
-    }
-
     public static final double DBL_EPSILON = Math.ulp(1.0);
+
+    public FunctionEvaluator functionEvaluator;
 
     /*
      * tnc : minimize a function with variables subject to bounds, using
@@ -204,27 +121,17 @@ public class TncImpl {
      * it can solve problems having any number of variables, but it is
      * especially useful when the number of variables (n) is large.    
      */
-    int numFuncEvaluations = 0;
-    
-    public tnc_rc tnc(int n, double[] x, double[] g, TncFunction function,
+    int numIterations = 0;
+
+    public CompletionReason tnc(int n, double[] x, double[] g, TncFunction function,
             double[] low, double[] up, double[] scale,
-            double[] offset, EnumSet<tnc_message> messages, int maxCGit, int maxnfeval,
+            double[] offset, int maxCGit, int maxnfeval,
             double eta, double stepmx, double accuracy, double fmin,
             double ftol, double xtol, double pgtol, double rescale,
             TncCallback callback, TncRef ref) {
-        tnc_rc rc;
-
-        /* Coerce x into bounds */
-        ArrayMath.clip(x, low, up);
-
-        /* Initial function evaluation */
-        ref.f = function.evaluate(x, g);
-        numFuncEvaluations++;
-
         /* Scaling parameters */
         double[] xscale = new double[n];
         double[] xoffset = new double[n];
-        double fscale = 1.0;
 
         for (int i = 0; i < n; i++) {
             if (scale != null) {
@@ -283,20 +190,11 @@ public class TncImpl {
 
         /* Optimisation */
         tnc_minimizeRef tmpMinRef = new tnc_minimizeRef();
-        tmpMinRef.f = ref.f;
-        tmpMinRef.fscale = fscale;
-        tmpMinRef.niter = ref.niter;
-        rc = tnc_minimize(n, x, g, function, xscale, xoffset, low, up,
-                messages, maxCGit, maxnfeval, eta, stepmx,
-                accuracy, fmin, ftol, xtol, pgtol, rescale,
-                callback, tmpMinRef);
+        CompletionReason rc = tnc_minimize(n, x, g, function, xscale, xoffset, low, up, maxCGit, 
+                maxnfeval, eta, stepmx, accuracy, fmin, ftol, xtol, pgtol, rescale, callback, tmpMinRef);
         ref.f = tmpMinRef.f;
-        fscale = tmpMinRef.fscale;
-        ref.niter = tmpMinRef.niter;
 
-        if (messages.contains(tnc_message.TNC_MSG_EXIT)) {
-            System.err.format("tnc: %s\n", rc.getMessage());
-        }
+        logger.info(rc.getMessage());
 
         return rc;
     }
@@ -356,8 +254,6 @@ public class TncImpl {
     public class tnc_minimizeRef {
 
         public double f;
-        public double fscale;
-        public int niter;
     }
 
     /**
@@ -365,30 +261,16 @@ public class TncImpl {
      * preconditioned by a limited-memory quasi-newton method (this preconditioning strategy is
      * developed in this routine) with a further diagonal scaling (see routine diagonalscaling).
      */
-    public tnc_rc tnc_minimize(int n, double[] x, double[] gfull,
+    public CompletionReason tnc_minimize(int n, double[] x, double[] gfull,
             TncFunction function, double[] xscale, double[] xoffset,
-            double[] low, double[] up, EnumSet<tnc_message> messages,
+            double[] low, double[] up,
             int maxCGit, int maxnfeval, double eta, double stepmx,
             double accuracy, double fmin, double ftol, double xtol,
             double pgtol, double rescale, TncCallback callback, tnc_minimizeRef ref) {
-        /*double fLastReset, difnew, epsred, oldgtp, difold, oldf, xnorm, newscale,
-         gnorm, ustpmax, fLastConstraint, spe, yrsr, yksk,
-         *temp = NULL
-         , *sk = NULL
-         , *yk = NULL
-         , *diagb = NULL
-         , *sr = NULL
-         ,
-         *yr = NULL
-         , *oldg = NULL
-         , *pk = NULL
-         , *g = NULL;*/
-        double alpha = 0.0;         /* Default unused value */
+        functionEvaluator = new FunctionEvaluator(function, maxnfeval);
 
-        /*int i, icycle, oldnfeval, *pivot = NULL, frc;
-         logical lreset, newcon, upd1, remcon;
-         tnc_rc rc = TNC_ENOMEM;     /* Default error */
-        ref.niter = 0;
+        double fscale = 1.0;
+        double alpha = 0.0;         /* Default unused value */
 
         /* Allocate temporary vectors */
         double[] oldg = new double[n];
@@ -414,15 +296,18 @@ public class TncImpl {
         double yrsr = 0.0;
         double yksk = 0.0;
 
+        /* Initial function evaluation */
+        ref.f = functionEvaluator.evaluate(x, gfull);
+
         /* Initial scaling */
         scalex(n, x, xscale, xoffset);
-        ref.f *= ref.fscale;
+        ref.f *= fscale;
 
         /* initial pivot calculation */
         setConstraints(n, x, pivot, xscale, xoffset, low, up);
 
         ArrayMath.copy(gfull, g);
-        scaleg(n, g, xscale, ref.fscale);
+        scaleg(n, g, xscale, fscale);
 
         /* Test the lagrange multipliers to see if they are non-negative. */
         for (int i = 0; i < n; i++) {
@@ -440,10 +325,10 @@ public class TncImpl {
 
         double fLastReset = ref.f;            /* Value at last reset */
 
-        if (messages.contains(tnc_message.TNC_MSG_ITER)) {
-            System.err.format("  NIT   NF   F                       GTG\n");
-            printCurrentIteration(n, ref.f / ref.fscale, gfull,
-                    ref.niter, numFuncEvaluations, pivot);
+        if (logger.isTraceEnabled()) {
+            logger.trace("  NIT   NF   F                       GTG");
+            printCurrentIteration(n, ref.f / fscale, gfull,
+                    numIterations, functionEvaluator.getNumEvaluations(), pivot);
         }
 
         /* Set the diagonal of the approximate hessian to unity. */
@@ -451,25 +336,18 @@ public class TncImpl {
             diagb[i] = 1.0;
         }
 
-        tnc_rc rc;
+        CompletionReason rc;
         /* Start of main iterative loop */
         while (true) {
             /* Local minimum test */
-            if (ArrayMath.euclidianNorm(g) <= pgtol * ref.fscale) {
+            if (ArrayMath.euclidianNorm(g) <= pgtol * fscale) {
                 /* |PG| == 0.0 => local minimum */
                 ArrayMath.copy(gfull, g);
                 project(n, g, pivot);
-                if (messages.contains(tnc_message.TNC_MSG_INFO)) {
-                    System.err.format("tnc: |pg| = %g -> local minimum\n",
-                            ArrayMath.euclidianNorm(g) / ref.fscale);
+                if (logger.isDebugEnabled()) {
+                    logger.debug("|pg| = {} -> local minimum", ArrayMath.euclidianNorm(g) / fscale);
                 }
-                rc = tnc_rc.TNC_LOCALMINIMUM;
-                break;
-            }
-
-            /* Terminate if more than maxnfeval evaluations have been made */
-            if (numFuncEvaluations >= maxnfeval) {
-                rc = tnc_rc.TNC_MAXFUN;
+                rc = CompletionReason.TNC_LOCALMINIMUM;
                 break;
             }
 
@@ -479,7 +357,7 @@ public class TncImpl {
                 newscale = 1.0 / newscale;
 
                 ref.f *= newscale;
-                ref.fscale *= newscale;
+                fscale *= newscale;
                 gnorm *= newscale;
                 fLastConstraint *= newscale;
                 fLastReset *= newscale;
@@ -496,15 +374,13 @@ public class TncImpl {
                 icycle = n - 1;
                 newcon = true;
 
-                if (messages.contains(tnc_message.TNC_MSG_INFO)) {
-                    System.err.format("tnc: fscale = %g\n", ref.fscale);
-                }
+                logger.debug("fscale = {}", fscale);
             }
 
             ArrayMath.copy(x, temp);
             project(n, temp, pivot);
             double xnorm = ArrayMath.euclidianNorm(temp);
-            int oldnfeval = numFuncEvaluations;
+            int oldnfeval = functionEvaluator.getNumEvaluations();
 
             /* Compute the new search direction */
             tnc_directionRef tmpDirRef = new tnc_directionRef();
@@ -516,8 +392,8 @@ public class TncImpl {
             tmpDirRef.yk = yk;
             tmpDirRef.yr = yr;
             tmpDirRef.zsol = pk;
-            tnc_direction(g, n, maxCGit, maxnfeval, upd1, yksk, yrsr, lreset, function, xscale,
-                    xoffset, ref.fscale, accuracy, gnorm, xnorm, low, up, tmpDirRef);
+            tnc_direction(g, n, maxCGit, maxnfeval, upd1, yksk, yrsr, lreset, xscale,
+                    xoffset, fscale, accuracy, gnorm, xnorm, low, up, tmpDirRef);
             diagb = tmpDirRef.diagb;
             pivot = tmpDirRef.pivot;
             sk = tmpDirRef.sk;
@@ -555,30 +431,21 @@ public class TncImpl {
 
             if (spe > 0.0) {
                 /* Set the initial step length */
-                alpha = initialStep(ref.f, fmin / ref.fscale, oldgtp, spe);
+                alpha = initialStep(ref.f, fmin / fscale, oldgtp, spe);
 
                 /* Perform the linear search */
                 linearSearchRef tmpLinSRef = new linearSearchRef();
                 tmpLinSRef.alpha = alpha;
                 tmpLinSRef.f = ref.f;
-                ls_rc lsrc = linearSearch(n, function, low, up,
-                        xscale, xoffset, ref.fscale, pivot,
-                        eta, ftol, spe, pk, x, gfull,
-                        maxnfeval, tmpLinSRef);
+                linearSearch(n, low, up, xscale, xoffset, fscale, pivot,
+                        eta, ftol, spe, pk, x, gfull, maxnfeval, tmpLinSRef);
                 alpha = tmpLinSRef.alpha;
                 ref.f = tmpLinSRef.f;
-
-                if (lsrc == ls_rc.LS_FAIL) {
-                    rc = tnc_rc.TNC_LSFAIL;
-                    break;
-                }
 
                 /* If we went up to the maximum unconstrained step, increase it */
                 if (alpha >= 0.9 * ustpmax) {
                     stepmx *= 1e2;
-                    if (messages.contains(tnc_message.TNC_MSG_INFO)) {
-                        System.err.format("tnc: stepmx = %g\n", stepmx);
-                    }
+                    logger.debug("stepmx = {}", stepmx);
                 }
 
                 /* If we went up to the maximum constrained step,
@@ -586,15 +453,6 @@ public class TncImpl {
                 if (alpha - spe >= -DBL_EPSILON * 10.0) {
                     newcon = true;
                 } else {
-                    /* Break if the linear search has failed to find a lower point */
-                    if (lsrc != ls_rc.LS_OK) {
-                        if (lsrc == ls_rc.LS_MAXFUN) {
-                            rc = tnc_rc.TNC_MAXFUN;
-                        } else {
-                            rc = tnc_rc.TNC_LSFAIL;
-                        }
-                        break;
-                    }
                     newcon = false;
                 }
             } else {
@@ -604,15 +462,14 @@ public class TncImpl {
 
             if (newcon) {
                 if (!addConstraint(n, x, pk, pivot, low, up, xscale, xoffset)) {
-                    if (numFuncEvaluations == oldnfeval) {
-                        rc = tnc_rc.TNC_NOPROGRESS;
-                        break;
+                    if (functionEvaluator.getNumEvaluations() == oldnfeval) {
+                        throw new MinimizationError("Unable to progress");
                     }
                 }
                 fLastConstraint = ref.f;
             }
 
-            ref.niter++;
+            numIterations++;
 
             /* Invoke the callback function */
             if (callback != null) {
@@ -637,14 +494,14 @@ public class TncImpl {
             }
 
             ArrayMath.copy(gfull, g);
-            scaleg(n, g, xscale, ref.fscale);
+            scaleg(n, g, xscale, fscale);
 
             ArrayMath.copy(g, temp);
             project(n, temp, pivot);
             gnorm = ArrayMath.euclidianNorm(temp);
 
             /* Reset pivot */
-            boolean remcon = removeConstraint(oldgtp, gnorm, pgtol * ref.fscale, ref.f,
+            boolean remcon = removeConstraint(oldgtp, gnorm, pgtol * fscale, ref.f,
                     fLastConstraint, g, pivot, n);
 
             /* If a constraint is removed */
@@ -658,29 +515,28 @@ public class TncImpl {
 
             if (!remcon && !newcon) {
                 /* No constraint removed & no new constraint : tests for convergence */
-                if (Math.abs(difnew) <= ftol * ref.fscale) {
-                    if (messages.contains(tnc_message.TNC_MSG_INFO)) {
-                        System.err.format("tnc: |fn-fn-1] = %g -> convergence\n",
-                                Math.abs(difnew) / ref.fscale);
+                if (Math.abs(difnew) <= ftol * fscale) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("|fn-fn-1] = {} -> convergence", Math.abs(difnew) / fscale);
                     }
-                    rc = tnc_rc.TNC_FCONVERGED;
+                    rc = CompletionReason.TNC_FCONVERGED;
                     break;
                 }
                 if (alpha * ArrayMath.euclidianNorm(pk) <= xtol) {
-                    if (messages.contains(tnc_message.TNC_MSG_INFO)) {
-                        System.err.format("tnc: |xn-xn-1] = %g -> convergence\n",
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("|xn-xn-1] = %g -> convergence",
                                 alpha * ArrayMath.euclidianNorm(pk));
                     }
-                    rc = tnc_rc.TNC_XCONVERGED;
+                    rc = CompletionReason.TNC_XCONVERGED;
                     break;
                 }
             }
 
             project(n, g, pivot);
 
-            if (messages.contains(tnc_message.TNC_MSG_ITER)) {
-                printCurrentIteration(n, ref.f / ref.fscale, gfull,
-                        ref.niter, numFuncEvaluations, pivot);
+            if (logger.isTraceEnabled()) {
+                printCurrentIteration(n, ref.f / fscale, gfull,
+                        numIterations, functionEvaluator.getNumEvaluations(), pivot);
             }
 
             /* Compute the change in the iterates and the corresponding change in the
@@ -708,15 +564,15 @@ public class TncImpl {
             }
         }
 
-        if (messages.contains(tnc_message.TNC_MSG_ITER)) {
-            printCurrentIteration(n, ref.f / ref.fscale, gfull,
-                    ref.niter, numFuncEvaluations, pivot);
+        if (logger.isTraceEnabled()) {
+            printCurrentIteration(n, ref.f / fscale, gfull,
+                    numIterations, functionEvaluator.getNumEvaluations(), pivot);
         }
 
         /* Unscaling */
         unscalex(n, x, xscale, xoffset);
         ArrayMath.clip(x, low, up);
-        ref.f /= ref.fscale;
+        ref.f /= fscale;
 
         return rc;
     }
@@ -733,7 +589,7 @@ public class TncImpl {
             }
         }
 
-        System.err.format(" %4d %4d %22.15E  %15.8E\n", niter, nfeval, f, gtg);
+        logger.trace(String.format(" %4d %4d %22.15E  %15.8E", niter, nfeval, f, gtg));
     }
 
     /**
@@ -868,7 +724,7 @@ public class TncImpl {
      */
     public void tnc_direction(double[] g, int n, int maxCGit, int maxnfeval,
             boolean upd1, double yksk, double yrsr, boolean lreset,
-            TncFunction function, double[] xscale, double[] xoffset,
+            double[] xscale, double[] xoffset,
             double fscale, double accuracy, double gnorm, double xnorm,
             double[] low, double[] up, tnc_directionRef ref) {
         /* No CG it. => dir = -grad */
@@ -913,9 +769,8 @@ public class TncImpl {
             project(n, zk, ref.pivot);
             double rz = ArrayMath.dotProduct(r, zk);
 
-            if ((rz / rhsnrm < tol) || (numFuncEvaluations >= (maxnfeval - 1))) {
-                /* Truncate algorithm in case of an emergency
-                 or too many function evaluations */
+            if (rz / rhsnrm < tol) {
+                /* Truncate algorithm in case of an emergency */
                 if (k == 0) {
                     ArrayMath.copy(g, ref.zsol);
                     ArrayMath.negate(ref.zsol);
@@ -935,9 +790,8 @@ public class TncImpl {
             }
 
             project(n, v, ref.pivot);
-            hessianTimesVector(v, gv, n, ref.x, g, function, xscale, xoffset, fscale,
+            hessianTimesVector(v, gv, n, ref.x, g, xscale, xoffset, fscale,
                     accuracy, xnorm, low, up);
-            numFuncEvaluations++;
             project(n, gv, ref.pivot);
 
             double vgv = ArrayMath.dotProduct(v, gv);
@@ -1022,7 +876,7 @@ public class TncImpl {
      * Hessian vector product through finite differences
      */
     public void hessianTimesVector(double[] v, double[] gv, int n, double[] x,
-            double[] g, TncFunction function, double[] xscale, double[] xoffset,
+            double[] g, double[] xscale, double[] xoffset,
             double fscale, double accuracy, double xnorm, double[] low,
             double[] up) {
         double[] xv = new double[n];
@@ -1034,7 +888,7 @@ public class TncImpl {
 
         unscalex(n, xv, xscale, xoffset);
         ArrayMath.clip(xv, low, up);
-        function.evaluate(xv, gv);
+        functionEvaluator.evaluate(xv, gv);
 
         scaleg(n, gv, xscale, fscale);
 
@@ -1187,7 +1041,7 @@ public class TncImpl {
     /**
      * Line search algorithm of gill and murray
      */
-    public ls_rc linearSearch(int n, TncFunction function, double[] low,
+    public void linearSearch(int n, double[] low,
             double[] up, double[] xscale, double[] xoffset, double fscale,
             int[] pivot, double eta, double ftol, double xbnd, double[] p,
             double[] x, double gfull[], int maxnfeval, linearSearchRef ref) {
@@ -1236,7 +1090,7 @@ public class TncImpl {
         tmpPInitRef.reltol = reltol;
         tmpPInitRef.u = u;
         tmpPInitRef.xmin = ref.alpha;
-        getptc_rc itest = getptcInit(tnytol, eta, rmu, xbnd, tmpPInitRef);
+        getptcInit(tnytol, eta, rmu, xbnd, tmpPInitRef);
         double a = tmpPInitRef.a;
         abstol = tmpPInitRef.abstol;
         double b = tmpPInitRef.b;
@@ -1261,12 +1115,12 @@ public class TncImpl {
         ref.alpha = tmpPInitRef.xmin;
         double xw = tmpPInitRef.xw;
 
+        boolean requiresFurtherEvaluation = true;
         /* If itest == GETPTC_EVAL, the algorithm requires the function value to be
          calculated */
-        while (itest == getptc_rc.GETPTC_EVAL) {
-            /* Test for too many iterations or too many function evals */
-            if ((++itcnt > maxlsit) || (numFuncEvaluations >= maxnfeval)) {
-                break;
+        while (requiresFurtherEvaluation) {
+            if (++itcnt > maxlsit) {
+                throw new MinimizationError("Linear search failed. Max iterations reached");
             }
 
             double ualpha = ref.alpha + u;
@@ -1278,10 +1132,7 @@ public class TncImpl {
             unscalex(n, temp, xscale, xoffset);
             ArrayMath.clip(temp, low, up);
 
-            fu = function.evaluate(temp, tempgfull);
-            numFuncEvaluations++;
-
-            fu *= fscale;
+            fu = functionEvaluator.evaluate(temp, tempgfull) * fscale;
 
             ArrayMath.copy(tempgfull, temp);
             scaleg(n, temp, xscale, fscale);
@@ -1311,7 +1162,7 @@ public class TncImpl {
             tmpPIterRef.u = u;
             tmpPIterRef.xmin = ref.alpha;
             tmpPIterRef.xw = xw;
-            itest = getptcIter(big, rtsmll, tnytol, fpresn, xbnd, tmpPIterRef);
+            requiresFurtherEvaluation = getptcIter(big, rtsmll, tnytol, fpresn, xbnd, tmpPIterRef);
             a = tmpPIterRef.a;
             abstol = tmpPIterRef.abstol;
             b = tmpPIterRef.b;
@@ -1342,22 +1193,10 @@ public class TncImpl {
             }
         }
 
-        if (itest == getptc_rc.GETPTC_OK) {
-            /* A successful search has been made */
-            ref.f = fmin;
-            ArrayMath.axPlusY(ref.alpha, p, x);
-            ArrayMath.copy(newgfull, gfull);
-            return ls_rc.LS_OK;
-        } else if (itcnt > maxlsit) {
-            /* Too many iterations ? */
-            return ls_rc.LS_FAIL;
-        } else if (itest != getptc_rc.GETPTC_EVAL) {
-            /* If itest=GETPTC_FAIL or GETPTC_EINVAL a lower point could not be found */
-            return ls_rc.LS_FAIL;
-        } else {
-            /* Too many function evaluations */
-            return ls_rc.LS_MAXFUN;
-        }
+        /* A successful search has been made */
+        ref.f = fmin;
+        ArrayMath.axPlusY(ref.alpha, p, x);
+        ArrayMath.copy(newgfull, gfull);
     }
 
     public class getptcInitRef {
@@ -1393,11 +1232,11 @@ public class TncImpl {
      * about the interval in which a lower point is to be found and from this getptc computes a
      * point at which the function can be evaluated by the calling program.
      */
-    public getptc_rc getptcInit(double tnytol, double eta, double rmu,
+    public void getptcInit(double tnytol, double eta, double rmu,
             double xbnd, getptcInitRef ref) {
         /* Check input parameters */
         if (ref.u <= 0.0 || xbnd <= tnytol || ref.gu > 0.0) {
-            return getptc_rc.GETPTC_EINVAL;
+            throw new MinimizationError("Invalid inputs to getptcInit");
         }
         if (xbnd < ref.abstol) {
             ref.abstol = xbnd;
@@ -1449,7 +1288,6 @@ public class TncImpl {
         if (Math.abs(ref.step) < ref.tol && ref.step >= 0.0) {
             ref.u = ref.tol;
         }
-        return getptc_rc.GETPTC_EVAL;
     }
 
     public class getptcIterRef {
@@ -1479,7 +1317,7 @@ public class TncImpl {
         public double tol;
     }
 
-    public getptc_rc getptcIter(double big, double rtsmll, double tnytol,
+    public boolean getptcIter(double big, double rtsmll, double tnytol,
             double fpresn, double xbnd, getptcIterRef ref) {
         ConvergenceCheck:
         {
@@ -1554,7 +1392,7 @@ public class TncImpl {
                 && ((Math.abs(ref.xmin - xbnd) > ref.tol) || (!ref.braktd)));
         if (convrg) {
             if (ref.xmin != 0.0) {
-                return getptc_rc.GETPTC_OK;
+                return false;
             }
 
             /*
@@ -1564,11 +1402,11 @@ public class TncImpl {
              * expected, reduce the value of tol.
              */
             if (Math.abs(ref.oldf - ref.fw) <= fpresn) {
-                return getptc_rc.GETPTC_FAIL;
+                throw new MinimizationError("getptciter failed. |oldf - fw| <= fpresn");
             }
             ref.tol = 0.1 * ref.tol;
             if (ref.tol < tnytol) {
-                return getptc_rc.GETPTC_FAIL;
+                throw new MinimizationError("getptciter failed. tol < tnytol");
             }
             ref.reltol = 0.1 * ref.reltol;
             ref.abstol = 0.1 * ref.abstol;
@@ -1727,7 +1565,8 @@ public class TncImpl {
         if (Math.abs(ref.step) < ref.tol && ref.step >= 0.0) {
             ref.u = ref.tol;
         }
-        return getptc_rc.GETPTC_EVAL;
+        
+        return true;
     }
 
 }

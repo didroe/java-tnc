@@ -8,9 +8,9 @@ package didroe.tnc;
  * 
  * @author Did
  */
-public class TncInputError extends RuntimeException {
+public class InputError extends RuntimeException {
 
-    TncInputError(String message) {
+    InputError(String message) {
         super(message);
     }
     
