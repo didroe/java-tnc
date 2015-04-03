@@ -51,7 +51,7 @@ public class TncImpl {
 
     public static final double DBL_EPSILON = Math.ulp(1.0);
 
-    public FunctionEvaluator functionEvaluator;
+    FunctionEvaluator functionEvaluator;
 
     /*
      * tnc : minimize a function with variables subject to bounds, using
@@ -1053,7 +1053,7 @@ public class TncImpl {
 
         ArrayMath.copy(gfull, temp);
         scaleg(n, temp, xscale, fscale);
-        double gu = ArrayMath.dotProduct(temp, p);
+        double initGu = ArrayMath.dotProduct(temp, p);
 
         ArrayMath.copy(x, temp);
         project(n, temp, pivot);
@@ -1063,7 +1063,7 @@ public class TncImpl {
         double rteps = Math.sqrt(DBL_EPSILON);
         double pe = ArrayMath.euclidianNorm(p) + DBL_EPSILON;
         double reltol = rteps * (xnorm + 1.0) / pe;
-        double abstol = -DBL_EPSILON * (1.0 + Math.abs(ref.f)) / (gu - DBL_EPSILON);
+        double abstol = -DBL_EPSILON * (1.0 + Math.abs(ref.f)) / (initGu - DBL_EPSILON);
 
         /* Compute the smallest allowable spacing between points in the linear
          search */
@@ -1077,7 +1077,6 @@ public class TncImpl {
         double fpresn = ftol;
 
         double u = ref.alpha;
-        double fu = ref.f;
         double fmin = ref.f;
         double rmu = 1e-4;
 
@@ -1085,12 +1084,10 @@ public class TncImpl {
         getptcInitRef tmpPInitRef = new getptcInitRef();
         tmpPInitRef.abstol = abstol;
         tmpPInitRef.fmin = fmin;
-        tmpPInitRef.fu = fu;
-        tmpPInitRef.gu = gu;
         tmpPInitRef.reltol = reltol;
         tmpPInitRef.u = u;
         tmpPInitRef.xmin = ref.alpha;
-        getptcInit(tnytol, eta, rmu, xbnd, tmpPInitRef);
+        getptcInit(tnytol, eta, rmu, xbnd, ref.f, initGu, tmpPInitRef);
         double a = tmpPInitRef.a;
         abstol = tmpPInitRef.abstol;
         double b = tmpPInitRef.b;
@@ -1099,12 +1096,10 @@ public class TncImpl {
         double e = tmpPInitRef.e;
         double factor = tmpPInitRef.factor;
         fmin = tmpPInitRef.fmin;
-        fu = tmpPInitRef.fu;
         double fw = tmpPInitRef.fw;
         double gmin = tmpPInitRef.gmin;
         double gtest1 = tmpPInitRef.gtest1;
         double gtest2 = tmpPInitRef.gtest2;
-        gu = tmpPInitRef.gu;
         double gw = tmpPInitRef.gw;
         double oldf = tmpPInitRef.oldf;
         reltol = tmpPInitRef.reltol;
@@ -1116,12 +1111,11 @@ public class TncImpl {
         double xw = tmpPInitRef.xw;
 
         boolean requiresFurtherEvaluation = true;
-        /* If itest == GETPTC_EVAL, the algorithm requires the function value to be
-         calculated */
         while (requiresFurtherEvaluation) {
-            if (++itcnt > maxlsit) {
+            if (itcnt == maxlsit) {
                 throw new MinimizationError("Linear search failed. Max iterations reached");
             }
+            itcnt++;
 
             double ualpha = ref.alpha + u;
             for (int i = 0; i < n; i++) {
@@ -1132,11 +1126,11 @@ public class TncImpl {
             unscalex(n, temp, xscale, xoffset);
             ArrayMath.clip(temp, low, up);
 
-            fu = functionEvaluator.evaluate(temp, tempgfull) * fscale;
+            double fu = functionEvaluator.evaluate(temp, tempgfull) * fscale;
 
             ArrayMath.copy(tempgfull, temp);
             scaleg(n, temp, xscale, fscale);
-            gu = ArrayMath.dotProduct(temp, p);
+            double gu = ArrayMath.dotProduct(temp, p);
 
             getptcIterRef tmpPIterRef = new getptcIterRef();
             tmpPIterRef.a = a;
@@ -1147,12 +1141,10 @@ public class TncImpl {
             tmpPIterRef.e = e;
             tmpPIterRef.factor = factor;
             tmpPIterRef.fmin = fmin;
-            tmpPIterRef.fu = fu;
             tmpPIterRef.fw = fw;
             tmpPIterRef.gmin = gmin;
             tmpPIterRef.gtest1 = gtest1;
             tmpPIterRef.gtest2 = gtest2;
-            tmpPIterRef.gu = gu;
             tmpPIterRef.gw = gw;
             tmpPIterRef.oldf = oldf;
             tmpPIterRef.reltol = reltol;
@@ -1162,7 +1154,7 @@ public class TncImpl {
             tmpPIterRef.u = u;
             tmpPIterRef.xmin = ref.alpha;
             tmpPIterRef.xw = xw;
-            requiresFurtherEvaluation = getptcIter(big, rtsmll, tnytol, fpresn, xbnd, tmpPIterRef);
+            requiresFurtherEvaluation = getptcIter(big, rtsmll, tnytol, fpresn, xbnd, fu, gu, tmpPIterRef);
             a = tmpPIterRef.a;
             abstol = tmpPIterRef.abstol;
             b = tmpPIterRef.b;
@@ -1171,12 +1163,10 @@ public class TncImpl {
             e = tmpPIterRef.e;
             factor = tmpPIterRef.factor;
             fmin = tmpPIterRef.fmin;
-            fu = tmpPIterRef.fu;
             fw = tmpPIterRef.fw;
             gmin = tmpPIterRef.gmin;
             gtest1 = tmpPIterRef.gtest1;
             gtest2 = tmpPIterRef.gtest2;
-            gu = tmpPIterRef.gu;
             gw = tmpPIterRef.gw;
             oldf = tmpPIterRef.oldf;
             reltol = tmpPIterRef.reltol;
@@ -1204,8 +1194,6 @@ public class TncImpl {
         public double reltol;
         public double abstol;
         public double u;
-        public double fu;
-        public double gu;
         public double xmin;
         public double fmin;
         public double gmin;
@@ -1233,9 +1221,9 @@ public class TncImpl {
      * point at which the function can be evaluated by the calling program.
      */
     public void getptcInit(double tnytol, double eta, double rmu,
-            double xbnd, getptcInitRef ref) {
+            double xbnd, double fu, double gu, getptcInitRef ref) {
         /* Check input parameters */
-        if (ref.u <= 0.0 || xbnd <= tnytol || ref.gu > 0.0) {
+        if (ref.u <= 0.0 || xbnd <= tnytol || gu > 0.0) {
             throw new MinimizationError("Invalid inputs to getptcInit");
         }
         if (xbnd < ref.abstol) {
@@ -1251,11 +1239,11 @@ public class TncImpl {
         ref.a = 0.0;
         ref.xw = 0.0;
         ref.xmin = 0.0;
-        ref.oldf = ref.fu;
-        ref.fmin = ref.fu;
-        ref.fw = ref.fu;
-        ref.gw = ref.gu;
-        ref.gmin = ref.gu;
+        ref.oldf = fu;
+        ref.fmin = fu;
+        ref.fw = fu;
+        ref.gw = gu;
+        ref.gmin = gu;
         ref.step = ref.u;
         ref.factor = 5.0;
 
@@ -1271,8 +1259,8 @@ public class TncImpl {
         ref.b1 = ref.b;
 
         /* Compute the constants required for the two convergence criteria. */
-        ref.gtest1 = -rmu * ref.gu;
-        ref.gtest2 = -eta * ref.gu;
+        ref.gtest1 = -rmu * gu;
+        ref.gtest2 = -eta * gu;
 
         /* If the step is too large, replace by the scaled bound (so as to */
         /* compute the new point on the boundary). */
@@ -1295,8 +1283,6 @@ public class TncImpl {
         public double reltol;
         public double abstol;
         public double u;
-        public double fu;
-        public double gu;
         public double xmin;
         public double fmin;
         public double gmin;
@@ -1318,15 +1304,15 @@ public class TncImpl {
     }
 
     public boolean getptcIter(double big, double rtsmll, double tnytol,
-            double fpresn, double xbnd, getptcIterRef ref) {
+            double fpresn, double xbnd, double fu, double gu, getptcIterRef ref) {
         ConvergenceCheck:
         {
             /* Update a,b,xw, and xmin */
-            if (ref.fu <= ref.fmin) {
+            if (fu <= ref.fmin) {
                 /* If function value not increased, new point becomes next */
                 /* origin and other points are scaled accordingly. */
                 double chordu = ref.oldf - (ref.xmin + ref.u) * ref.gtest1;
-                if (ref.fu > chordu) {
+                if (fu > chordu) {
                     /* The new function value does not satisfy the sufficient decrease */
                     /* criterion. prepare to move the upper bound to this point and */
                     /* force the interpolation scheme to either bisect the interval of */
@@ -1334,7 +1320,7 @@ public class TncImpl {
                     /* the root of f(alpha)=chord(alpha). */
 
                     double chordm = ref.oldf - ref.xmin * ref.gtest1;
-                    ref.gu = -ref.gmin;
+                    gu = -ref.gmin;
                     double denom = chordm - ref.fmin;
                     if (Math.abs(denom) < 1e-15) {
                         denom = 1e-15;
@@ -1343,23 +1329,23 @@ public class TncImpl {
                         }
                     }
                     if (ref.xmin != 0.0) {
-                        ref.gu = ref.gmin * (chordu - ref.fu) / denom;
+                        gu = ref.gmin * (chordu - fu) / denom;
                     }
-                    ref.fu = 0.5 * ref.u * (ref.gmin + ref.gu) + ref.fmin;
-                    if (ref.fu < ref.fmin) {
-                        ref.fu = ref.fmin;
+                    fu = 0.5 * ref.u * (ref.gmin + gu) + ref.fmin;
+                    if (fu < ref.fmin) {
+                        fu = ref.fmin;
                     }
                 } else {
                     ref.fw = ref.fmin;
-                    ref.fmin = ref.fu;
+                    ref.fmin = fu;
                     ref.gw = ref.gmin;
-                    ref.gmin = ref.gu;
+                    ref.gmin = gu;
                     ref.xmin += ref.u;
                     ref.a -= ref.u;
                     ref.b -= ref.u;
                     ref.xw = -ref.u;
                     ref.scxbnd -= ref.u;
-                    if (ref.gu <= 0.0) {
+                    if (gu <= 0.0) {
                         ref.a = 0.0;
                     } else {
                         ref.b = 0.0;
@@ -1379,8 +1365,8 @@ public class TncImpl {
                 ref.braktd = true;
             }
             ref.xw = ref.u;
-            ref.fw = ref.fu;
-            ref.gw = ref.gu;
+            ref.fw = fu;
+            ref.gw = gu;
         }
 
         double twotol = ref.tol + ref.tol;

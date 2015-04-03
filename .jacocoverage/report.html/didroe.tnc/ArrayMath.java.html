@@ -1,7 +1,5 @@
-<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ArrayMath.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCoverage analysis of project &quot;Tnc&quot; (powered by JaCoCo from EclEmma)</a> &gt; <a href="index.source.html" class="el_package">didroe.tnc</a> &gt; <span class="el_source">ArrayMath.java</span></div><h1>ArrayMath.java</h1><pre class="source lang-java linenums">/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ArrayMath.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCoverage analysis of project &quot;Tnc&quot; (powered by JaCoCo from EclEmma)</a> &gt; <a href="index.source.html" class="el_package">didroe.tnc</a> &gt; <span class="el_source">ArrayMath.java</span></div><h1>ArrayMath.java</h1><pre class="source lang-java linenums">/* 
+ * See the &quot;LICENSE&quot; file for the full license governing this code. 
  */
 package didroe.tnc;
 
@@ -20,25 +18,25 @@ interface ArrayMath {
      * @param upperBounds An array of upper bounds for each x element
      */
     public static void clip(double[] x, double[] lowerBounds, double[] upperBounds) {
-<span class="fc bfc" id="L23" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
-<span class="fc bfc" id="L24" title="All 2 branches covered.">            if (x[i] &lt; lowerBounds[i]) {</span>
-<span class="fc" id="L25">                x[i] = lowerBounds[i];</span>
-<span class="fc bfc" id="L26" title="All 2 branches covered.">            } else if (x[i] &gt; upperBounds[i]) {</span>
-<span class="fc" id="L27">                x[i] = upperBounds[i];</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">            if (x[i] &lt; lowerBounds[i]) {</span>
+<span class="fc" id="L23">                x[i] = lowerBounds[i];</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">            } else if (x[i] &gt; upperBounds[i]) {</span>
+<span class="fc" id="L25">                x[i] = upperBounds[i];</span>
             }
         }
-<span class="fc" id="L30">    }</span>
+<span class="fc" id="L28">    }</span>
 
     /**
      * Dot product of vectors x and y. Assumes that x and y are of the same
      * length.
      */
     public static double dotProduct(double[] x, double[] y) {
-<span class="fc" id="L37">        double result = 0.0;</span>
-<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
-<span class="fc" id="L39">            result += x[i] * y[i];</span>
+<span class="fc" id="L35">        double result = 0.0;</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
+<span class="fc" id="L37">            result += x[i] * y[i];</span>
         }
-<span class="fc" id="L41">        return result;</span>
+<span class="fc" id="L39">        return result;</span>
     }
 
     /**
@@ -46,28 +44,28 @@ interface ArrayMath {
      * and destination are of the same length.
      */
     public static void copy(double[] src, double[] dest) {
-<span class="fc" id="L49">        System.arraycopy(src, 0, dest, 0, src.length);</span>
-<span class="fc" id="L50">    }</span>
+<span class="fc" id="L47">        System.arraycopy(src, 0, dest, 0, src.length);</span>
+<span class="fc" id="L48">    }</span>
 
     /**
      * Updates each element of y subject to y += a*x for each corresponding x
      * value. Assumes x and y have the same length.
      */
     public static void axPlusY(double a, double[] x, double[] y) {
-<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
-<span class="fc" id="L58">            y[i] += a * x[i];</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
+<span class="fc" id="L56">            y[i] += a * x[i];</span>
         }
-<span class="fc" id="L60">    }</span>
+<span class="fc" id="L58">    }</span>
 
     /**
      * Updates each element of y subject to y += x for each corresponding x
      * value. Assumes x and y have the same length.
      */
     public static void xPlusY(double[] x, double[] y) {
-<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
-<span class="fc" id="L68">            y[i] += x[i];</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
+<span class="fc" id="L66">            y[i] += x[i];</span>
         }
-<span class="fc" id="L70">    }</span>
+<span class="fc" id="L68">    }</span>
 
     /**
      * The euclidian norm of x. ie. sqrt(x1^2 + x2^2 + ...)
@@ -76,37 +74,37 @@ interface ArrayMath {
         // To avoid overflow, this algorithm scales each element and undoes the
         // scaling at the end. The scale is adjusted incrementally as elements 
         // are processed
-<span class="fc" id="L79">        double sumOfSquares = 1.0;</span>
-<span class="fc" id="L80">        double scale = 0.0;</span>
+<span class="fc" id="L77">        double sumOfSquares = 1.0;</span>
+<span class="fc" id="L78">        double scale = 0.0;</span>
 
-<span class="fc bfc" id="L82" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
-<span class="fc" id="L83">            double element = x[i];</span>
-<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (element != 0.0) {</span>
-<span class="fc" id="L85">                double absElement = Math.abs(element);</span>
-<span class="fc bfc" id="L86" title="All 2 branches covered.">                if (scale &lt; absElement) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
+<span class="fc" id="L81">            double element = x[i];</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            if (element != 0.0) {</span>
+<span class="fc" id="L83">                double absElement = Math.abs(element);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">                if (scale &lt; absElement) {</span>
                     // Scale needs updating
-<span class="fc" id="L88">                    double ratio = scale / absElement;</span>
-<span class="fc" id="L89">                    scale = absElement;</span>
-<span class="fc" id="L90">                    sumOfSquares = (sumOfSquares * ratio * ratio) + 1.0;</span>
-<span class="fc" id="L91">                } else {</span>
+<span class="fc" id="L86">                    double ratio = scale / absElement;</span>
+<span class="fc" id="L87">                    scale = absElement;</span>
+<span class="fc" id="L88">                    sumOfSquares = (sumOfSquares * ratio * ratio) + 1.0;</span>
+<span class="fc" id="L89">                } else {</span>
                     // Current scale is ok
-<span class="fc" id="L93">                    double ratio = absElement / scale;</span>
-<span class="fc" id="L94">                    sumOfSquares += ratio * ratio;</span>
+<span class="fc" id="L91">                    double ratio = absElement / scale;</span>
+<span class="fc" id="L92">                    sumOfSquares += ratio * ratio;</span>
                 }
             }
         }
 
-<span class="fc" id="L99">        return scale * Math.sqrt(sumOfSquares);</span>
+<span class="fc" id="L97">        return scale * Math.sqrt(sumOfSquares);</span>
     }
 
     /**
      * Negate all elements of x
      */
     public static void negate(double[] x) {
-<span class="fc bfc" id="L106" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
-<span class="fc" id="L107">            x[i] = -x[i];</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
+<span class="fc" id="L105">            x[i] = -x[i];</span>
         }
-<span class="fc" id="L109">    }</span>
+<span class="fc" id="L107">    }</span>
 
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.4.201502262128</span></div></body></html>

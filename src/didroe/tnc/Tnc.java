@@ -270,12 +270,13 @@ public class Tnc {
         TncRef ref = new TncRef();
         TncImpl t = new TncImpl();
         double[] g = new double[initialGuess.length];
-        t.tnc(initialGuess.length, x, g, function, effectiveLowerBounds,
-                effectiveUpperBounds, copyArray(scale), copyArray(offset),
+        CompletionReason completionReason = t.tnc(initialGuess.length, x, g, function, 
+                effectiveLowerBounds, effectiveUpperBounds, copyArray(scale), copyArray(offset),
                 maxConjugateGradientIterations, effectiveMaxFunctionEvaluations, eta, 
                 maxLinearSearchStep, accuracy, minFunctionValueEstimate, valuePrecisionGoal,
                 parameterPrecisionGoal, gradientPrecisionGoal, rescale, callback, ref);
-        return new TncResult(x, ref.f, g, t.functionEvaluator.getNumEvaluations(), t.numIterations);
+        return new TncResult(x, ref.f, g, t.functionEvaluator.getNumEvaluations(), t.numIterations,
+                completionReason);
     }
 
 }

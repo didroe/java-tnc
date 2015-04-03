@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>CompletionReason.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JaCoCoverage analysis of project &quot;Tnc&quot; (powered by JaCoCo from EclEmma)</a> &gt; <a href="index.source.html" class="el_package">didroe.tnc</a> &gt; <span class="el_source">CompletionReason.java</span></div><h1>CompletionReason.java</h1><pre class="source lang-java linenums">/*
+ * See the &quot;LICENSE&quot; file for the full license governing this code.
+ */
+package didroe.tnc;
+
+/**
+ * Criteria that caused the minimisation to complete
+ *
+ * @author Did
+ */
+<span class="pc" id="L11">public enum CompletionReason {</span>
+
+    /**
+     * Local minima reached (|pg| ~= 0)
+     */
+<span class="fc" id="L16">    TNC_LOCALMINIMUM(&quot;Local minima reached (|pg| ~= 0)&quot;),</span>
+    /**
+     * Converged (|f_n-f_(n-1)| ~= 0)
+     */
+<span class="fc" id="L20">    TNC_FCONVERGED(&quot;Converged (|f_n-f_(n-1)| ~= 0)&quot;),</span>
+    /**
+     * Converged (|x_n-x_(n-1)| ~= 0)
+     */
+<span class="fc" id="L24">    TNC_XCONVERGED(&quot;Converged (|x_n-x_(n-1)| ~= 0)&quot;);</span>
+
+    private final String message;
+
+<span class="fc" id="L28">    CompletionReason(String message) {</span>
+<span class="fc" id="L29">        this.message = message;</span>
+<span class="fc" id="L30">    }</span>
+
+    public String getMessage() {
+<span class="fc" id="L33">        return message;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.4.201502262128</span></div></body></html>

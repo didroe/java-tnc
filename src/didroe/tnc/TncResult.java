@@ -14,13 +14,16 @@ public class TncResult {
     private final double[] gradient;
     private final int numFuncEvaluations;
     private final int numIterations;
+    private final CompletionReason completionReason;
     
-    TncResult(double[] parameters, double value, double[] gradient, int numFuncEvaluations, int numIterations) {
+    TncResult(double[] parameters, double value, double[] gradient, int numFuncEvaluations, 
+            int numIterations, CompletionReason completionReason) {
         this.parameters = parameters;
         this.value = value;
         this.gradient = gradient;
         this.numFuncEvaluations = numFuncEvaluations;
         this.numIterations = numIterations;
+        this.completionReason = completionReason;
     }
     
     public double[] parameters() {
@@ -41,6 +44,10 @@ public class TncResult {
     
     public int numIterations() {
         return numIterations;
+    }
+    
+    public CompletionReason completionReason() {
+        return completionReason;
     }
     
 }
