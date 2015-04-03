@@ -1,48 +1,9 @@
-/*
- * ORIGINAL SCIPY LICENSE HEADER:
- * Copyright (c) 2002-2005, Jean-Sebastien Roy (js@jeannot.org)
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+/* 
+ * See the "LICENSE" file for the full license governing this code. 
  */
-
-/*
- * This software is an implementation of TNBC, a truncated newton minimization
- * package originally developed by Stephen G. Nash in Fortran.
- *
- * The original source code can be found at :
- * http://iris.gmu.edu/~snash/nash/software/software.html
- *
- * Copyright for the original TNBC fortran routines:
- *
- *   TRUNCATED-NEWTON METHOD:  SUBROUTINES
- *     WRITTEN BY:  STEPHEN G. NASH
- *           SCHOOL OF INFORMATION TECHNOLOGY & ENGINEERING
- *           GEORGE MASON UNIVERSITY
- *           FAIRFAX, VA 22030
- */
-
 package didroe.tnc;
 
-import java.text.Normalizer;
 import java.util.EnumSet;
-import java.util.Iterator;
 
 /**
  *
@@ -88,17 +49,9 @@ public class TncImpl {
     public enum tnc_rc {
 
         /**
-         * Invalid parameters (n&lt;0)
+         * Local minima reached (|pg| ~= 0)
          */
-        TNC_EINVAL("Invalid parameters (n<0)"),
-        /**
-         * Infeasible (low bound &gt; up bound)
-         */
-        TNC_INFEASIBLE("Infeasible (low bound > up bound)"),
-        /**
-         * Local minima reach (|pg| ~= 0)
-         */
-        TNC_LOCALMINIMUM("Local minima reach (|pg| ~= 0)"),
+        TNC_LOCALMINIMUM("Local minima reached (|pg| ~= 0)"),
         /**
          * Converged (|f_n-f_(n-1)| ~= 0)
          */
@@ -108,7 +61,7 @@ public class TncImpl {
          */
         TNC_XCONVERGED("Converged (|x_n-x_(n-1)| ~= 0)"),
         /**
-         * Max. number of function evaluations reach
+         * Max. number of function evaluations reached
          */
         TNC_MAXFUN("Maximum number of function evaluations reached"),
         /**
@@ -116,17 +69,9 @@ public class TncImpl {
          */
         TNC_LSFAIL("Linear search failed"),
         /**
-         * All lower bounds are equal to the upper bounds
-         */
-        TNC_CONSTANT("All lower bounds are equal to the upper bounds"),
-        /**
          * Unable to progress
          */
-        TNC_NOPROGRESS("Unable to progress"),
-        /**
-         * User requested end of minization
-         */
-        TNC_USERABORT("User requested end of minimization");
+        TNC_NOPROGRESS("Unable to progress");
 
         private String message;
 
@@ -140,8 +85,7 @@ public class TncImpl {
     }
 
     /**
-     * A callback function accepting x as input parameter along with the state
-     * pointer.
+     * A callback function accepting x as input parameter along with the state pointer.
      */
     public interface TncCallback {
 
@@ -187,15 +131,7 @@ public class TncImpl {
         /**
          * No suitable point found
          */
-        LS_FAIL,
-        /**
-         * User requested end of minimization
-         */
-        LS_USERABORT,
-        /**
-         * Memory allocation failed
-         */
-        LS_ENOMEM;
+        LS_FAIL;
     }
 
     public static final double DBL_EPSILON = Math.ulp(1.0);
@@ -268,168 +204,102 @@ public class TncImpl {
      * it can solve problems having any number of variables, but it is
      * especially useful when the number of variables (n) is large.    
      */
-
+    int numFuncEvaluations = 0;
+    
     public tnc_rc tnc(int n, double[] x, double[] g, TncFunction function,
             double[] low, double[] up, double[] scale,
             double[] offset, EnumSet<tnc_message> messages, int maxCGit, int maxnfeval,
             double eta, double stepmx, double accuracy, double fmin,
             double ftol, double xtol, double pgtol, double rescale,
             TncCallback callback, TncRef ref) {
-        /*int rc, frc, i, nc, nfeval_local, free_low = false,
-         free_up = false, free_g = false;
-         double *xscale = NULL, fscale, rteps, *xoffset = NULL;*/
-
-        ref.nfeval = 0;
         tnc_rc rc;
 
-        cleanup:
-        {
-            /* Check for errors in the input parameters */
-            if (n == 0) {
-                rc = tnc_rc.TNC_CONSTANT;
-                break cleanup;
-            }
+        /* Coerce x into bounds */
+        ArrayMath.clip(x, low, up);
 
-            if (n < 0) {
-                rc = tnc_rc.TNC_EINVAL;
-                break cleanup;
-            }
+        /* Initial function evaluation */
+        ref.f = function.evaluate(x, g);
+        numFuncEvaluations++;
 
-            /* Check bounds arrays */
-            if (low == null) {
-                low = new double[n];
-                for (int i = 0; i < n; i++) {
-                    low[i] = Double.NEGATIVE_INFINITY;
+        /* Scaling parameters */
+        double[] xscale = new double[n];
+        double[] xoffset = new double[n];
+        double fscale = 1.0;
+
+        for (int i = 0; i < n; i++) {
+            if (scale != null) {
+                xscale[i] = Math.abs(scale[i]);
+                if (xscale[i] == 0.0) {
+                    xoffset[i] = low[i] = up[i] = x[i];
                 }
+            } else if (low[i] != Double.NEGATIVE_INFINITY && up[i] != Double.POSITIVE_INFINITY) {
+                xscale[i] = up[i] - low[i];
+                xoffset[i] = (up[i] + low[i]) * 0.5;
+            } else {
+                xscale[i] = 1.0 + Math.abs(x[i]);
+                xoffset[i] = x[i];
             }
-
-            if (up == null) {
-                up = new double[n];
-                for (int i = 0; i < n; i++) {
-                    up[i] = Double.POSITIVE_INFINITY;
-                }
+            if (offset != null) {
+                xoffset[i] = offset[i];
             }
-
-            /* Coherency check */
-            for (int i = 0; i < n; i++) {
-                if (low[i] > up[i]) {
-                    rc = tnc_rc.TNC_INFEASIBLE;
-                    break cleanup;
-                }
-            }
-
-            /* Coerce x into bounds */
-            ArrayMath.clip(x, low, up);
-
-            if (maxnfeval < 1) {
-                rc = tnc_rc.TNC_MAXFUN;
-                break cleanup;
-            }
-
-            /* Allocate g if necessary */
-            if (g == null) {
-                g = new double[n];
-            }
-
-            /* Initial function evaluation */
-            ref.f = function.evaluate(x, g);
-            ref.nfeval++;
-
-            /* Constant problem ? */
-            int nc = 0;
-            for (int i = 0; i < n; i++) {
-                if ((low[i] == up[i]) || (scale != null && scale[i] == 0.0)) {
-                    nc++;
-                }
-            }
-
-            if (nc == n) {
-                rc = tnc_rc.TNC_CONSTANT;
-                break cleanup;
-            }
-
-            /* Scaling parameters */
-            double[] xscale = new double[n];
-            double[] xoffset = new double[n];
-            double fscale = 1.0;
-
-            for (int i = 0; i < n; i++) {
-                if (scale != null) {
-                    xscale[i] = Math.abs(scale[i]);
-                    if (xscale[i] == 0.0) {
-                        xoffset[i] = low[i] = up[i] = x[i];
-                    }
-                } else if (low[i] != Double.NEGATIVE_INFINITY && up[i] != Double.POSITIVE_INFINITY) {
-                    xscale[i] = up[i] - low[i];
-                    xoffset[i] = (up[i] + low[i]) * 0.5;
-                } else {
-                    xscale[i] = 1.0 + Math.abs(x[i]);
-                    xoffset[i] = x[i];
-                }
-                if (offset != null) {
-                    xoffset[i] = offset[i];
-                }
-            }
-
-            /* Default values for parameters */
-            double rteps = Math.sqrt(DBL_EPSILON);
-
-            if (stepmx < rteps * 10.0) {
-                stepmx = 1.0e1;
-            }
-            if (eta < 0.0 || eta >= 1.0) {
-                eta = 0.25;
-            }
-            if (rescale < 0) {
-                rescale = 1.3;
-            }
-            if (maxCGit < 0) {          /* maxCGit == 0 is valid */
-
-                maxCGit = n / 2;
-                if (maxCGit < 1) {
-                    maxCGit = 1;
-                } else if (maxCGit > 50) {
-                    maxCGit = 50;
-                }
-            }
-            if (maxCGit > n) {
-                maxCGit = n;
-            }
-            if (accuracy <= DBL_EPSILON) {
-                accuracy = rteps;
-            }
-            if (ftol < 0.0) {
-                ftol = accuracy;
-            }
-            if (pgtol < 0.0) {
-                pgtol = 1e-2 * Math.sqrt(accuracy);
-            }
-            if (xtol < 0.0) {
-                xtol = rteps;
-            }
-
-            /* Optimisation */
-            tnc_minimizeRef tmpMinRef = new tnc_minimizeRef();
-            tmpMinRef.f = ref.f;
-            tmpMinRef.fscale = fscale;
-            tmpMinRef.nfeval = ref.nfeval;
-            tmpMinRef.niter = ref.niter;
-            rc = tnc_minimize(n, x, g, function, xscale, xoffset, low, up,
-                    messages, maxCGit, maxnfeval, eta, stepmx,
-                    accuracy, fmin, ftol, xtol, pgtol, rescale,
-                    callback, tmpMinRef);
-            ref.f = tmpMinRef.f;
-            fscale = tmpMinRef.fscale;
-            ref.nfeval = tmpMinRef.nfeval;
-            ref.niter = tmpMinRef.niter;
         }
+
+        /* Default values for parameters */
+        double rteps = Math.sqrt(DBL_EPSILON);
+
+        if (stepmx < rteps * 10.0) {
+            stepmx = 1.0e1;
+        }
+        if (eta < 0.0 || eta >= 1.0) {
+            eta = 0.25;
+        }
+        if (rescale < 0) {
+            rescale = 1.3;
+        }
+        if (maxCGit < 0) {          /* maxCGit == 0 is valid */
+
+            maxCGit = n / 2;
+            if (maxCGit < 1) {
+                maxCGit = 1;
+            } else if (maxCGit > 50) {
+                maxCGit = 50;
+            }
+        }
+        if (maxCGit > n) {
+            maxCGit = n;
+        }
+        if (accuracy <= DBL_EPSILON) {
+            accuracy = rteps;
+        }
+        if (ftol < 0.0) {
+            ftol = accuracy;
+        }
+        if (pgtol < 0.0) {
+            pgtol = 1e-2 * Math.sqrt(accuracy);
+        }
+        if (xtol < 0.0) {
+            xtol = rteps;
+        }
+
+        /* Optimisation */
+        tnc_minimizeRef tmpMinRef = new tnc_minimizeRef();
+        tmpMinRef.f = ref.f;
+        tmpMinRef.fscale = fscale;
+        tmpMinRef.niter = ref.niter;
+        rc = tnc_minimize(n, x, g, function, xscale, xoffset, low, up,
+                messages, maxCGit, maxnfeval, eta, stepmx,
+                accuracy, fmin, ftol, xtol, pgtol, rescale,
+                callback, tmpMinRef);
+        ref.f = tmpMinRef.f;
+        fscale = tmpMinRef.fscale;
+        ref.niter = tmpMinRef.niter;
+
         if (messages.contains(tnc_message.TNC_MSG_EXIT)) {
             System.err.format("tnc: %s\n", rc.getMessage());
         }
 
         return rc;
     }
-
 
     /**
      * Unscale x
@@ -487,15 +357,13 @@ public class TncImpl {
 
         public double f;
         public double fscale;
-        public int nfeval;
         public int niter;
     }
 
     /**
-     * This routine is a bounds-constrained truncated-newton method. the
-     * truncated-newton method is preconditioned by a limited-memory
-     * quasi-newton method (this preconditioning strategy is developed in this
-     * routine) with a further diagonal scaling (see routine diagonalscaling).
+     * This routine is a bounds-constrained truncated-newton method. the truncated-newton method is
+     * preconditioned by a limited-memory quasi-newton method (this preconditioning strategy is
+     * developed in this routine) with a further diagonal scaling (see routine diagonalscaling).
      */
     public tnc_rc tnc_minimize(int n, double[] x, double[] gfull,
             TncFunction function, double[] xscale, double[] xoffset,
@@ -575,7 +443,7 @@ public class TncImpl {
         if (messages.contains(tnc_message.TNC_MSG_ITER)) {
             System.err.format("  NIT   NF   F                       GTG\n");
             printCurrentIteration(n, ref.f / ref.fscale, gfull,
-                    ref.niter, ref.nfeval, pivot);
+                    ref.niter, numFuncEvaluations, pivot);
         }
 
         /* Set the diagonal of the approximate hessian to unity. */
@@ -600,7 +468,7 @@ public class TncImpl {
             }
 
             /* Terminate if more than maxnfeval evaluations have been made */
-            if (ref.nfeval >= maxnfeval) {
+            if (numFuncEvaluations >= maxnfeval) {
                 rc = tnc_rc.TNC_MAXFUN;
                 break;
             }
@@ -636,12 +504,11 @@ public class TncImpl {
             ArrayMath.copy(x, temp);
             project(n, temp, pivot);
             double xnorm = ArrayMath.euclidianNorm(temp);
-            int oldnfeval = ref.nfeval;
+            int oldnfeval = numFuncEvaluations;
 
             /* Compute the new search direction */
             tnc_directionRef tmpDirRef = new tnc_directionRef();
             tmpDirRef.diagb = diagb;
-            tmpDirRef.nfeval = ref.nfeval;
             tmpDirRef.pivot = pivot;
             tmpDirRef.sk = sk;
             tmpDirRef.sr = sr;
@@ -649,11 +516,9 @@ public class TncImpl {
             tmpDirRef.yk = yk;
             tmpDirRef.yr = yr;
             tmpDirRef.zsol = pk;
-            tnc_rc frc = tnc_direction(g, n, maxCGit, maxnfeval, upd1, yksk, yrsr,
-                    lreset, function, xscale, xoffset, ref.fscale, accuracy, gnorm,
-                    xnorm, low, up, tmpDirRef);
+            tnc_direction(g, n, maxCGit, maxnfeval, upd1, yksk, yrsr, lreset, function, xscale,
+                    xoffset, ref.fscale, accuracy, gnorm, xnorm, low, up, tmpDirRef);
             diagb = tmpDirRef.diagb;
-            ref.nfeval = tmpDirRef.nfeval;
             pivot = tmpDirRef.pivot;
             sk = tmpDirRef.sk;
             sr = tmpDirRef.sr;
@@ -661,12 +526,6 @@ public class TncImpl {
             yk = tmpDirRef.yk;
             yr = tmpDirRef.yr;
             pk = tmpDirRef.zsol;
-
-            // TODO: This is not right
-            if (frc != tnc_rc.TNC_LOCALMINIMUM) {
-                rc = tnc_rc.TNC_USERABORT;
-                break;
-            }
 
             if (!newcon) {
                 if (!lreset) {
@@ -702,19 +561,12 @@ public class TncImpl {
                 linearSearchRef tmpLinSRef = new linearSearchRef();
                 tmpLinSRef.alpha = alpha;
                 tmpLinSRef.f = ref.f;
-                tmpLinSRef.nfeval = ref.nfeval;
                 ls_rc lsrc = linearSearch(n, function, low, up,
                         xscale, xoffset, ref.fscale, pivot,
                         eta, ftol, spe, pk, x, gfull,
                         maxnfeval, tmpLinSRef);
                 alpha = tmpLinSRef.alpha;
                 ref.f = tmpLinSRef.f;
-                ref.nfeval = tmpLinSRef.nfeval;
-
-                if (lsrc == ls_rc.LS_USERABORT) {
-                    rc = tnc_rc.TNC_USERABORT;
-                    break;
-                }
 
                 if (lsrc == ls_rc.LS_FAIL) {
                     rc = tnc_rc.TNC_LSFAIL;
@@ -752,7 +604,7 @@ public class TncImpl {
 
             if (newcon) {
                 if (!addConstraint(n, x, pk, pivot, low, up, xscale, xoffset)) {
-                    if (ref.nfeval == oldnfeval) {
+                    if (numFuncEvaluations == oldnfeval) {
                         rc = tnc_rc.TNC_NOPROGRESS;
                         break;
                     }
@@ -828,7 +680,7 @@ public class TncImpl {
 
             if (messages.contains(tnc_message.TNC_MSG_ITER)) {
                 printCurrentIteration(n, ref.f / ref.fscale, gfull,
-                        ref.niter, ref.nfeval, pivot);
+                        ref.niter, numFuncEvaluations, pivot);
             }
 
             /* Compute the change in the iterates and the corresponding change in the
@@ -858,7 +710,7 @@ public class TncImpl {
 
         if (messages.contains(tnc_message.TNC_MSG_ITER)) {
             printCurrentIteration(n, ref.f / ref.fscale, gfull,
-                    ref.niter, ref.nfeval, pivot);
+                    ref.niter, numFuncEvaluations, pivot);
         }
 
         /* Unscaling */
@@ -1002,7 +854,6 @@ public class TncImpl {
         public double[] zsol;
         public double[] diagb;
         public double[] x;
-        public int nfeval;
         public double[] sk;
         public double[] yk;
         public double[] sr;
@@ -1011,12 +862,11 @@ public class TncImpl {
     }
 
     /**
-     * This routine performs a preconditioned conjugate-gradient iteration in
-     * order to solve the newton equations for a search direction for a
-     * truncated-newton algorithm. When the value of the quadratic model is
-     * sufficiently reduced, the iteration is terminated.
+     * This routine performs a preconditioned conjugate-gradient iteration in order to solve the
+     * newton equations for a search direction for a truncated-newton algorithm. When the value of
+     * the quadratic model is sufficiently reduced, the iteration is terminated.
      */
-    public tnc_rc tnc_direction(double[] g, int n, int maxCGit, int maxnfeval,
+    public void tnc_direction(double[] g, int n, int maxCGit, int maxnfeval,
             boolean upd1, double yksk, double yrsr, boolean lreset,
             TncFunction function, double[] xscale, double[] xoffset,
             double fscale, double accuracy, double gnorm, double xnorm,
@@ -1026,8 +876,7 @@ public class TncImpl {
             ArrayMath.copy(g, ref.zsol);
             ArrayMath.negate(ref.zsol);
             project(n, ref.zsol, ref.pivot);
-            // TODO : Not right
-            return tnc_rc.TNC_LOCALMINIMUM;
+            return;
         }
 
         /* General initialization */
@@ -1064,7 +913,7 @@ public class TncImpl {
             project(n, zk, ref.pivot);
             double rz = ArrayMath.dotProduct(r, zk);
 
-            if ((rz / rhsnrm < tol) || (ref.nfeval >= (maxnfeval - 1))) {
+            if ((rz / rhsnrm < tol) || (numFuncEvaluations >= (maxnfeval - 1))) {
                 /* Truncate algorithm in case of an emergency
                  or too many function evaluations */
                 if (k == 0) {
@@ -1086,14 +935,9 @@ public class TncImpl {
             }
 
             project(n, v, ref.pivot);
-            tnc_rc frc = hessianTimesVector(v, gv, n, ref.x, g, function,
-                    xscale, xoffset, fscale, accuracy, xnorm,
-                    low, up);
-            ref.nfeval++;
-            // TODO: Not right
-            if (frc != tnc_rc.TNC_LOCALMINIMUM) {
-                return frc;
-            }
+            hessianTimesVector(v, gv, n, ref.x, g, function, xscale, xoffset, fscale,
+                    accuracy, xnorm, low, up);
+            numFuncEvaluations++;
             project(n, gv, ref.pivot);
 
             double vgv = ArrayMath.dotProduct(v, gv);
@@ -1139,14 +983,11 @@ public class TncImpl {
         /* Terminate algorithm */
         /* Store (or restore) diagonal preconditioning */
         ArrayMath.copy(emat, ref.diagb);
-
-        // TODO : Not right
-        return tnc_rc.TNC_LOCALMINIMUM;
     }
 
     /**
-     * Update the preconditioning matrix based on a diagonal version of the bfgs
-     * quasi-newton update.
+     * Update the preconditioning matrix based on a diagonal version of the bfgs quasi-newton
+     * update.
      */
     public void diagonalScaling(int n, double[] e, double[] v, double[] gv,
             double[] r) {
@@ -1161,8 +1002,8 @@ public class TncImpl {
     }
 
     /**
-     * Returns the length of the initial step to be taken along the vector p in
-     * the next linear search.
+     * Returns the length of the initial step to be taken along the vector p in the next linear
+     * search.
      */
     public double initialStep(double fnew, double fmin, double gtp, double smax) {
         double d = Math.abs(fnew - fmin);
@@ -1180,7 +1021,7 @@ public class TncImpl {
     /**
      * Hessian vector product through finite differences
      */
-    public tnc_rc hessianTimesVector(double[] v, double[] gv, int n, double[] x,
+    public void hessianTimesVector(double[] v, double[] gv, int n, double[] x,
             double[] g, TncFunction function, double[] xscale, double[] xoffset,
             double fscale, double accuracy, double xnorm, double[] low,
             double[] up) {
@@ -1193,7 +1034,7 @@ public class TncImpl {
 
         unscalex(n, xv, xscale, xoffset);
         ArrayMath.clip(xv, low, up);
-        double f = function.evaluate(xv, gv);
+        function.evaluate(xv, gv);
 
         scaleg(n, gv, xscale, fscale);
 
@@ -1203,15 +1044,12 @@ public class TncImpl {
         }
 
         projectConstants(n, gv, xscale);
-
-        return tnc_rc.TNC_LOCALMINIMUM;
     }
 
     /**
-     * This routine acts as a preconditioning step for the linear
-     * conjugate-gradient routine. It is also the method of computing the search
-     * direction from the gradient for the non-linear conjugate-gradient code.
-     * It represents a two-step self-scaled bfgs formula.
+     * This routine acts as a preconditioning step for the linear conjugate-gradient routine. It is
+     * also the method of computing the search direction from the gradient for the non-linear
+     * conjugate-gradient code. It represents a two-step self-scaled bfgs formula.
      */
     public void msolve(double[] g, double[] y, int n,
             double[] sk, double[] yk, double[] diagb, double[] sr,
@@ -1344,7 +1182,6 @@ public class TncImpl {
 
         public double f;
         public double alpha;
-        public int nfeval;
     }
 
     /**
@@ -1423,12 +1260,12 @@ public class TncImpl {
         u = tmpPInitRef.u;
         ref.alpha = tmpPInitRef.xmin;
         double xw = tmpPInitRef.xw;
-        
+
         /* If itest == GETPTC_EVAL, the algorithm requires the function value to be
          calculated */
         while (itest == getptc_rc.GETPTC_EVAL) {
             /* Test for too many iterations or too many function evals */
-            if ((++itcnt > maxlsit) || (ref.nfeval >= maxnfeval)) {
+            if ((++itcnt > maxlsit) || (numFuncEvaluations >= maxnfeval)) {
                 break;
             }
 
@@ -1442,7 +1279,7 @@ public class TncImpl {
             ArrayMath.clip(temp, low, up);
 
             fu = function.evaluate(temp, tempgfull);
-            ref.nfeval++;
+            numFuncEvaluations++;
 
             fu *= fscale;
 
@@ -1551,11 +1388,10 @@ public class TncImpl {
     }
 
     /**
-     * getptc, an algorithm for finding a steplength, called repeatedly by
-     * routines which require a step length to be computed using cubic
-     * interpolation. The parameters contain information about the interval in
-     * which a lower point is to be found and from this getptc computes a point
-     * at which the function can be evaluated by the calling program.
+     * getptc, an algorithm for finding a steplength, called repeatedly by routines which require a
+     * step length to be computed using cubic interpolation. The parameters contain information
+     * about the interval in which a lower point is to be found and from this getptc computes a
+     * point at which the function can be evaluated by the calling program.
      */
     public getptc_rc getptcInit(double tnytol, double eta, double rmu,
             double xbnd, getptcInitRef ref) {
@@ -1893,6 +1729,5 @@ public class TncImpl {
         }
         return getptc_rc.GETPTC_EVAL;
     }
-
 
 }
