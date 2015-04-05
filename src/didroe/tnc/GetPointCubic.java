@@ -19,12 +19,22 @@ class GetPointCubic {
     private final double oldFunctionValue;
 
     /**
-     * Bound on the step
+     * Bound on the step.
      */
     private final double stepBound;
 
-    private final double gtest1;
-    private final double gtest2;
+    /**
+     * Smallest allowable spacing (tolerance) between points.
+     */
+    private final double smallestSpacing;
+    
+    /**
+     * Estimated relative precision in f(x)
+     */
+    private final double functionPrecision;
+    
+    private final double sufficientDecreaseCondition;
+    private final double sufficientDescentCondition;
 
     private double relativeTolerance;
     private double absoluteTolerance;
@@ -39,11 +49,11 @@ class GetPointCubic {
     /**
      * Lower bound of interval containing the minimiser.
      */
-    private double intervalLow;
+    private double intervalLowerBound;
     /**
      * Upper bound of interval containing the minimiser.
      */
-    private double intervalUp;
+    private double intervalUpperBound;
     /**
      * Is the minimum bracketed by the interval? Starts off as false.
      */
@@ -57,7 +67,7 @@ class GetPointCubic {
 
     /**
      * A bound on the step to be taken.
-     * FIXME: What does "scaled" mean
+     * FIXME: What does "scaled" mean?
      */
     private double scaledStepBound;
 
@@ -85,19 +95,39 @@ class GetPointCubic {
         }
     }
 
-    public GetPointCubic(double relativeTolerance, double absoluteTolerance, double tnytol, double eta, double rmu,
-            double stepBound, double initialStep, double fu, double gu) {
+    /**
+     * 
+     * @param relativeTolerance
+     * @param absoluteTolerance
+     * @param smallestSpacing
+     * @param eta
+     * @param rmu
+     * @param stepBound
+     * @param initialStep
+     * @param fu The current function value
+     * @param gu Dot product of the search direction and gradient (angle of search?)
+     */
+    public GetPointCubic(double relativeTolerance, double absoluteTolerance, double smallestSpacing, 
+            double functionPrecision, double eta, double rmu, double stepBound, 
+            double initialStep, double fu, double gu) {
         if (initialStep <= 0.0) {
             throw new IllegalArgumentException("Initial step must be > 0");
         }
-        if (stepBound <= tnytol || gu > 0.0) {
-            throw new IllegalArgumentException("Invalid inputs to GetPointCubic");
+        
+        if (stepBound <= smallestSpacing) {
+            throw new IllegalArgumentException("Step bound must be > smallest allowable spacing");
+        }
+        
+        if (gu > 0.0) {
+            throw new IllegalArgumentException("Search direction must be a descent direction");
         }
 
         oldFunctionValue = fu;
         this.relativeTolerance = relativeTolerance;
         this.stepBound = stepBound;
-
+        this.smallestSpacing = smallestSpacing;
+        this.functionPrecision = functionPrecision;
+        
         if (stepBound < absoluteTolerance) {
             this.absoluteTolerance = this.stepBound;
         } else {
@@ -105,12 +135,12 @@ class GetPointCubic {
         }
         tolerance = this.absoluteTolerance;
 
-        /* a and b define the interval of uncertainty, x and xw are points */
+        /* x and xw are points */
         /* with lowest and second lowest function values so far obtained. */
         /* initialize a,smin,xw at origin and corresponding values of */
         /* function and projection of the gradient along direction of search */
         /* at values for latest estimate at minimum. */
-        intervalLow = 0.0;
+        intervalLowerBound = 0.0;
         xw = 0.0;
         xmin = 0.0;
         fmin = fu;
@@ -120,17 +150,14 @@ class GetPointCubic {
         step = initialStep;
         factor = 5.0;
 
-        /* Set up xbnd as a bound on the step to be taken. (xbnd is not computed */
-        /* explicitly but scxbnd is its scaled value.) Set the upper bound */
-        /* on the interval of uncertainty initially to xbnd + tol(xbnd). */
         scaledStepBound = this.stepBound;
-        intervalUp = scaledStepBound + (this.relativeTolerance * Math.abs(scaledStepBound)) + this.absoluteTolerance;
-        e = intervalUp + intervalUp;
-        b1 = intervalUp;
+        intervalUpperBound = scaledStepBound + (this.relativeTolerance * Math.abs(scaledStepBound)) + this.absoluteTolerance;
+        e = intervalUpperBound + intervalUpperBound;
+        b1 = intervalUpperBound;
 
-        /* Compute the constants required for the two convergence criteria. */
-        gtest1 = -rmu * gu;
-        gtest2 = -eta * gu;
+        // Compute the constants required for the two convergence criteria
+        sufficientDecreaseCondition = -rmu * gu;
+        sufficientDescentCondition = -eta * gu;
 
         updateStepValues();
     }
@@ -144,7 +171,7 @@ class GetPointCubic {
         if (fu <= fmin) {
             /* If function value not increased, new point becomes next */
             /* origin and other points are scaled accordingly. */
-            double chordu = oldFunctionValue - (xmin + resultStep) * gtest1;
+            double chordu = oldFunctionValue - (xmin + resultStep) * sufficientDecreaseCondition;
             if (fu > chordu) {
                 /* The new function value does not satisfy the sufficient decrease */
                 /* criterion. prepare to move the upper bound to this point and */
@@ -152,7 +179,7 @@ class GetPointCubic {
                 /* uncertainty or take the linear interpolation step which estimates */
                 /* the root of f(alpha)=chord(alpha). */
 
-                double chordm = oldFunctionValue - xmin * gtest1;
+                double chordm = oldFunctionValue - (xmin * sufficientDecreaseCondition);
                 gu = -gmin;
                 double denom = chordm - fmin;
                 if (Math.abs(denom) < 1e-15) {
@@ -174,14 +201,14 @@ class GetPointCubic {
                 gw = gmin;
                 gmin = gu;
                 xmin += resultStep;
-                intervalLow -= resultStep;
-                intervalUp -= resultStep;
+                intervalLowerBound -= resultStep;
+                intervalUpperBound -= resultStep;
                 xw = -resultStep;
                 scaledStepBound -= resultStep;
                 if (gu <= 0.0) {
-                    intervalLow = 0.0;
+                    intervalLowerBound = 0.0;
                 } else {
-                    intervalUp = 0.0;
+                    intervalUpperBound = 0.0;
                     minIsBracketed = true;
                 }
                 tolerance = Math.abs(xmin) * relativeTolerance + absoluteTolerance;
@@ -192,9 +219,9 @@ class GetPointCubic {
         /* If function value increased, origin remains unchanged */
         /* but new point may now qualify as w. */
         if (resultStep < 0.0) {
-            intervalLow = resultStep;
+            intervalLowerBound = resultStep;
         } else {
-            intervalUp = resultStep;
+            intervalUpperBound = resultStep;
             minIsBracketed = true;
         }
         xw = resultStep;
@@ -202,20 +229,20 @@ class GetPointCubic {
         gw = gu;
     }
 
-    public boolean iterate(double big, double rtsmll, double tnytol,
-            double fpresn, double fu, double gu) {
+    public boolean iterate(double big, double rtsmll, 
+            double fu, double gu) {
         beforeConvergenceCheck(fu, gu);
 
         /* From here is ConvergenceCheck */
         
-        double twotol = tolerance + tolerance;
-        double xmidpt = 0.5 * (intervalLow + intervalUp);
+        double twiceTolerance = tolerance + tolerance;
+        double xmidpt = 0.5 * (intervalLowerBound + intervalUpperBound);
 
         /* Check termination criteria */
-        boolean convrg = (Math.abs(xmidpt) <= twotol - 0.5 * (intervalUp - intervalLow))
-                || (Math.abs(gmin) <= gtest2 && fmin < oldFunctionValue
+        boolean maybeConverged = (Math.abs(xmidpt) <= twiceTolerance - 0.5 * (intervalUpperBound - intervalLowerBound))
+                || (Math.abs(gmin) <= sufficientDescentCondition && fmin < oldFunctionValue
                 && ((Math.abs(xmin - stepBound) > tolerance) || (!minIsBracketed)));
-        if (convrg) {
+        if (maybeConverged) {
             if (xmin != 0.0) {
                 return false;
             }
@@ -226,16 +253,16 @@ class GetPointCubic {
              * unimodality constant, tol. If the change in f(x) is larger than
              * expected, reduce the value of tol.
              */
-            if (Math.abs(oldFunctionValue - fw) <= fpresn) {
+            if (Math.abs(oldFunctionValue - fw) <= functionPrecision) {
                 throw new MinimizationError("GetPointubic failed. |oldf - fw| <= fpresn");
             }
             tolerance = 0.1 * tolerance;
-            if (tolerance < tnytol) {
+            if (tolerance < smallestSpacing) {
                 throw new MinimizationError("GetPointubic failed. tol < tnytol");
             }
             relativeTolerance = 0.1 * relativeTolerance;
             absoluteTolerance = 0.1 * absoluteTolerance;
-            twotol = 0.1 * twotol;
+            twiceTolerance = 0.1 * twiceTolerance;
         }
 
         /* Continue with the computation of a trial step length */
@@ -318,17 +345,17 @@ class GetPointCubic {
         }
 
         /* Construct an artificial bound on the estimated steplength */
-        double a1 = intervalLow;
-        b1 = intervalUp;
+        double a1 = intervalLowerBound;
+        b1 = intervalUpperBound;
         step = xmidpt;
-        if ((!minIsBracketed) || ((intervalLow == 0.0 && xw < 0.0) || (intervalUp == 0.0 && xw > 0.0))) {
+        if ((!minIsBracketed) || ((intervalLowerBound == 0.0 && xw < 0.0) || (intervalUpperBound == 0.0 && xw > 0.0))) {
             if (minIsBracketed) {
                 /* If the minimum is not bracketed by 0 and xw the step must lie
                  within (a1,b1). */
                 double d1 = xw;
-                double d2 = intervalLow;
-                if (intervalLow == 0.0) {
-                    d2 = intervalUp;
+                double d2 = intervalLowerBound;
+                if (intervalLowerBound == 0.0) {
+                    d2 = intervalUpperBound;
                 }
                 /* This line might be : */
                 /* if (*a == 0.0) d2 = *e */
@@ -361,13 +388,13 @@ class GetPointCubic {
          * during the last-but-one iteration.
          */
         if (Math.abs(s) <= Math.abs(0.5 * q * r) || s <= q * a1 || s >= q * b1) {
-            e = intervalUp - intervalLow;
+            e = intervalUpperBound - intervalLowerBound;
         } else {
             /* A cubic interpolation step */
             step = s / q;
 
             /* The function must not be evaluated too close to a or b. */
-            if (step - intervalLow < twotol || intervalUp - step < twotol) {
+            if (step - intervalLowerBound < twiceTolerance || intervalUpperBound - step < twiceTolerance) {
                 if (xmidpt <= 0.0) {
                     step = -tolerance;
                 } else {

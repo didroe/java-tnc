@@ -1091,9 +1091,10 @@ public class TncImpl {
         project(temp, pivot);
         double xnorm = ArrayMath.euclidianNorm(temp);
 
-        // Absolute and relative tolerances for the linear search
         double rteps = Math.sqrt(DBL_EPSILON);
         double pe = ArrayMath.euclidianNorm(searchDirection) + DBL_EPSILON;
+
+        // Absolute and relative tolerances for the linear search
         double reltol = rteps * (xnorm + 1.0) / pe;
         double abstol = -DBL_EPSILON * (1.0 + Math.abs(f)) / (initGu - DBL_EPSILON);
 
@@ -1102,19 +1103,16 @@ public class TncImpl {
 
         double rtsmll = DBL_EPSILON;
         double big = 1.0 / (DBL_EPSILON * DBL_EPSILON);
-        int itcnt = 0;
+        int numIterations = 0;
 
-        // Estimated relative precision in f(x)
-        double fpresn = ftol;
-
-        GetPointCubic getPointCubic = new GetPointCubic(reltol, abstol, tnytol, eta, 1e-4, xBound, alpha, f, initGu);
+        GetPointCubic getPointCubic = new GetPointCubic(reltol, abstol, tnytol, ftol, eta, 1e-4, xBound, alpha, f, initGu);
 
         boolean requiresFurtherEvaluation = true;
         while (requiresFurtherEvaluation) {
-            if (itcnt == MAX_ITERATIONS) {
-                throw new MinimizationError("Linear search failed. Max iterations reached");
+            if (numIterations == MAX_ITERATIONS) {
+                throw new MinimizationError("Line search failed. Max iterations reached");
             }
-            itcnt++;
+            numIterations++;
 
             double ualpha = getPointCubic.xmin() + getPointCubic.resultStep();
             for (int i = 0; i < x.length; i++) {
@@ -1130,7 +1128,7 @@ public class TncImpl {
             scaleg(temp, xscale, fscale);
             double gu = ArrayMath.dotProduct(temp, searchDirection);
 
-            requiresFurtherEvaluation = getPointCubic.iterate(big, rtsmll, tnytol, fpresn, fu, gu);
+            requiresFurtherEvaluation = getPointCubic.iterate(big, rtsmll, fu, gu);
 
             // New best point
             if (getPointCubic.xmin() == ualpha) {
