@@ -4,178 +4,201 @@
 package didroe.tnc;
 
 /**
- * An algorithm for finding a step-length, called repeatedly by routines which require a
- * step length to be computed using cubic interpolation. The parameters contain information
- * about the interval in which a lower point is to be found and from this the algorithm 
- * computes a point at which the function can be evaluated by the calling program.
+ * An algorithm for finding a step-length, called repeatedly by routines which require a step length
+ * to be computed using cubic interpolation. The parameters contain information about the interval
+ * in which a lower point is to be found and from this the algorithm computes a point at which the
+ * function can be evaluated by the calling program.
+ *
  * @author Did
  */
 class GetPointCubic {
-        private final double oldf;
-        private final double gtest1;
-        private final double gtest2;
 
-        private double reltol;
-        private double abstol;
-        private double u;
-        private double xmin;
-        private double fmin;
-        private double gmin;
-        private double xw;
-        private double fw;
-        private double gw;
-        private double a;
-        private double b;
-        private double b1;
-        private double scxbnd;
-        private double e;
-        private double step;
-        private double factor;
-        private boolean braktd;
-        private double tol;
+    /**
+     * The original function value.
+     */
+    private final double oldFunctionValue;
 
+    /**
+     * Bound on the parameter values.
+     */
+    private final double xBound;
     
-    public GetPointCubic(double reltol, double abstol, double tnytol, double eta, double rmu, 
-<span class="fc" id="L39">            double xbnd, double u, double fu, double gu) {</span>
-<span class="pc bpc" id="L40" title="3 of 6 branches missed.">        if (u &lt;= 0.0 || xbnd &lt;= tnytol || gu &gt; 0.0) {</span>
-<span class="nc" id="L41">            throw new IllegalArgumentException(&quot;Invalid inputs to GetPointCubic&quot;);</span>
+    private final double gtest1;
+    private final double gtest2;
+    
+
+    private double relativeTolerance;
+    private double absoluteTolerance;
+    private double u;
+    private double xmin;
+    private double fmin;
+    private double gmin;
+    private double xw;
+    private double fw;
+    private double gw;
+    private double a;
+    private double b;
+    private double b1;
+    private double e;
+    private double step;
+    private double factor;
+    private double tol;
+
+    /**
+     * A bound on the step to be taken.
+     */
+    private double stepBound;
+
+    /**
+     * Is the minimum bracketed? Starts off as false.
+     */
+<span class="fc" id="L55">    private boolean minIsBracketed = false;</span>
+
+    /**
+     * If the step is too large, replace by the scaled bound (so as to compute the new point on 
+     * the boundary). 
+     */
+    private void constrainStep() {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (step &gt;= stepBound) {</span>
+<span class="fc" id="L63">            step = stepBound;</span>
+            // Move the step bound to the left so that sbnd + tol(xbnd) = xbnd. */
+<span class="fc" id="L65">            stepBound -= (relativeTolerance * Math.abs(xBound) + absoluteTolerance) / (1.0 + relativeTolerance);</span>
+        }        
+<span class="fc" id="L67">    }</span>
+    
+    public GetPointCubic(double relativeTolerance, double absoluteTolerance, double tnytol, double eta, double rmu,
+<span class="fc" id="L70">            double xBound, double u, double fu, double gu) {</span>
+<span class="pc bpc" id="L71" title="3 of 6 branches missed.">        if (u &lt;= 0.0 || xBound &lt;= tnytol || gu &gt; 0.0) {</span>
+<span class="nc" id="L72">            throw new IllegalArgumentException(&quot;Invalid inputs to GetPointCubic&quot;);</span>
         }
-        
-<span class="fc" id="L44">        this.reltol = reltol;</span>
-        
-<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        if (xbnd &lt; abstol) {</span>
-<span class="nc" id="L47">            this.abstol = xbnd;</span>
+
+<span class="fc" id="L75">        oldFunctionValue = fu;</span>
+<span class="fc" id="L76">        this.relativeTolerance = relativeTolerance;</span>
+<span class="fc" id="L77">        this.xBound = xBound;</span>
+
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (xBound &lt; absoluteTolerance) {</span>
+<span class="nc" id="L80">            this.absoluteTolerance = this.xBound;</span>
         } else {
-<span class="fc" id="L49">            this.abstol = abstol;</span>
+<span class="fc" id="L82">            this.absoluteTolerance = absoluteTolerance;</span>
         }
-<span class="fc" id="L51">        tol = this.abstol;</span>
+<span class="fc" id="L84">        tol = this.absoluteTolerance;</span>
 
         /* a and b define the interval of uncertainty, x and xw are points */
         /* with lowest and second lowest function values so far obtained. */
         /* initialize a,smin,xw at origin and corresponding values of */
         /* function and projection of the gradient along direction of search */
         /* at values for latest estimate at minimum. */
-<span class="fc" id="L58">        a = 0.0;</span>
-<span class="fc" id="L59">        xw = 0.0;</span>
-<span class="fc" id="L60">        xmin = 0.0;</span>
-<span class="fc" id="L61">        oldf = fu;</span>
-<span class="fc" id="L62">        fmin = fu;</span>
-<span class="fc" id="L63">        fw = fu;</span>
-<span class="fc" id="L64">        gw = gu;</span>
-<span class="fc" id="L65">        gmin = gu;</span>
-<span class="fc" id="L66">        step = u;</span>
-<span class="fc" id="L67">        factor = 5.0;</span>
-
-        /* The minimum has not yet been bracketed. */
-<span class="fc" id="L70">        braktd = false;</span>
+<span class="fc" id="L91">        a = 0.0;</span>
+<span class="fc" id="L92">        xw = 0.0;</span>
+<span class="fc" id="L93">        xmin = 0.0;</span>
+<span class="fc" id="L94">        fmin = fu;</span>
+<span class="fc" id="L95">        fw = fu;</span>
+<span class="fc" id="L96">        gw = gu;</span>
+<span class="fc" id="L97">        gmin = gu;</span>
+<span class="fc" id="L98">        step = u;</span>
+<span class="fc" id="L99">        factor = 5.0;</span>
 
         /* Set up xbnd as a bound on the step to be taken. (xbnd is not computed */
         /* explicitly but scxbnd is its scaled value.) Set the upper bound */
         /* on the interval of uncertainty initially to xbnd + tol(xbnd). */
-<span class="fc" id="L75">        scxbnd = xbnd;</span>
-<span class="fc" id="L76">        b = scxbnd + this.reltol * Math.abs(scxbnd) + this.abstol;</span>
-<span class="fc" id="L77">        e = b + b;</span>
-<span class="fc" id="L78">        b1 = b;</span>
+<span class="fc" id="L104">        stepBound = this.xBound;</span>
+<span class="fc" id="L105">        b = stepBound + (this.relativeTolerance * Math.abs(stepBound)) + this.absoluteTolerance;</span>
+<span class="fc" id="L106">        e = b + b;</span>
+<span class="fc" id="L107">        b1 = b;</span>
 
         /* Compute the constants required for the two convergence criteria. */
-<span class="fc" id="L81">        gtest1 = -rmu * gu;</span>
-<span class="fc" id="L82">        gtest2 = -eta * gu;</span>
+<span class="fc" id="L110">        gtest1 = -rmu * gu;</span>
+<span class="fc" id="L111">        gtest2 = -eta * gu;</span>
 
-        /* If the step is too large, replace by the scaled bound (so as to */
-        /* compute the new point on the boundary). */
-<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (step &gt;= scxbnd) {</span>
-<span class="fc" id="L87">            step = scxbnd;</span>
-            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
-<span class="fc" id="L89">            scxbnd -= (this.reltol * Math.abs(xbnd) + this.abstol) / (1.0 + this.reltol);</span>
-        }
-        
-<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (Math.abs(step) &lt; tol) {</span>
-<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (step &lt; 0.0) {</span>
-<span class="nc" id="L94">                this.u = -tol;</span>
+<span class="fc" id="L113">        constrainStep();</span>
+
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (Math.abs(step) &lt; tol) {</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            if (step &lt; 0.0) {</span>
+<span class="nc" id="L117">                this.u = -tol;</span>
             } else {
-<span class="nc" id="L96">                this.u = tol;</span>
+<span class="nc" id="L119">                this.u = tol;</span>
             }
         } else {
-<span class="fc" id="L99">            this.u = step;</span>
+<span class="fc" id="L122">            this.u = step;</span>
         }
-<span class="fc" id="L101">    }</span>
+<span class="fc" id="L124">    }</span>
 
     public boolean iterate(double big, double rtsmll, double tnytol,
-            double fpresn, double xbnd, double fu, double gu) {
+            double fpresn, double fu, double gu) {
         ConvergenceCheck:
         {
             /* Update a,b,xw, and xmin */
-<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (fu &lt;= fmin) {</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (fu &lt;= fmin) {</span>
                 /* If function value not increased, new point becomes next */
                 /* origin and other points are scaled accordingly. */
-<span class="fc" id="L111">                double chordu = oldf - (xmin + u) * gtest1;</span>
-<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                if (fu &gt; chordu) {</span>
+<span class="fc" id="L134">                double chordu = oldFunctionValue - (xmin + u) * gtest1;</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">                if (fu &gt; chordu) {</span>
                     /* The new function value does not satisfy the sufficient decrease */
                     /* criterion. prepare to move the upper bound to this point and */
                     /* force the interpolation scheme to either bisect the interval of */
                     /* uncertainty or take the linear interpolation step which estimates */
                     /* the root of f(alpha)=chord(alpha). */
 
-<span class="nc" id="L119">                    double chordm = oldf - xmin * gtest1;</span>
-<span class="nc" id="L120">                    gu = -gmin;</span>
-<span class="nc" id="L121">                    double denom = chordm - fmin;</span>
-<span class="nc bnc" id="L122" title="All 2 branches missed.">                    if (Math.abs(denom) &lt; 1e-15) {</span>
-<span class="nc" id="L123">                        denom = 1e-15;</span>
-<span class="nc bnc" id="L124" title="All 2 branches missed.">                        if (chordm - fmin &lt; 0.0) {</span>
-<span class="nc" id="L125">                            denom = -denom;</span>
+<span class="nc" id="L142">                    double chordm = oldFunctionValue - xmin * gtest1;</span>
+<span class="nc" id="L143">                    gu = -gmin;</span>
+<span class="nc" id="L144">                    double denom = chordm - fmin;</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">                    if (Math.abs(denom) &lt; 1e-15) {</span>
+<span class="nc" id="L146">                        denom = 1e-15;</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">                        if (chordm - fmin &lt; 0.0) {</span>
+<span class="nc" id="L148">                            denom = -denom;</span>
                         }
                     }
-<span class="nc bnc" id="L128" title="All 2 branches missed.">                    if (xmin != 0.0) {</span>
-<span class="nc" id="L129">                        gu = gmin * (chordu - fu) / denom;</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">                    if (xmin != 0.0) {</span>
+<span class="nc" id="L152">                        gu = gmin * (chordu - fu) / denom;</span>
                     }
-<span class="nc" id="L131">                    fu = 0.5 * u * (gmin + gu) + fmin;</span>
-<span class="nc bnc" id="L132" title="All 2 branches missed.">                    if (fu &lt; fmin) {</span>
-<span class="nc" id="L133">                        fu = fmin;</span>
+<span class="nc" id="L154">                    fu = 0.5 * u * (gmin + gu) + fmin;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">                    if (fu &lt; fmin) {</span>
+<span class="nc" id="L156">                        fu = fmin;</span>
                     }
-<span class="nc" id="L135">                } else {</span>
-<span class="fc" id="L136">                    fw = fmin;</span>
-<span class="fc" id="L137">                    fmin = fu;</span>
-<span class="fc" id="L138">                    gw = gmin;</span>
-<span class="fc" id="L139">                    gmin = gu;</span>
-<span class="fc" id="L140">                    xmin += u;</span>
-<span class="fc" id="L141">                    a -= u;</span>
-<span class="fc" id="L142">                    b -= u;</span>
-<span class="fc" id="L143">                    xw = -u;</span>
-<span class="fc" id="L144">                    scxbnd -= u;</span>
-<span class="fc bfc" id="L145" title="All 2 branches covered.">                    if (gu &lt;= 0.0) {</span>
-<span class="fc" id="L146">                        a = 0.0;</span>
+<span class="nc" id="L158">                } else {</span>
+<span class="fc" id="L159">                    fw = fmin;</span>
+<span class="fc" id="L160">                    fmin = fu;</span>
+<span class="fc" id="L161">                    gw = gmin;</span>
+<span class="fc" id="L162">                    gmin = gu;</span>
+<span class="fc" id="L163">                    xmin += u;</span>
+<span class="fc" id="L164">                    a -= u;</span>
+<span class="fc" id="L165">                    b -= u;</span>
+<span class="fc" id="L166">                    xw = -u;</span>
+<span class="fc" id="L167">                    stepBound -= u;</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">                    if (gu &lt;= 0.0) {</span>
+<span class="fc" id="L169">                        a = 0.0;</span>
                     } else {
-<span class="fc" id="L148">                        b = 0.0;</span>
-<span class="fc" id="L149">                        braktd = true;</span>
+<span class="fc" id="L171">                        b = 0.0;</span>
+<span class="fc" id="L172">                        minIsBracketed = true;</span>
                     }
-<span class="fc" id="L151">                    tol = Math.abs(xmin) * reltol + abstol;</span>
-<span class="fc" id="L152">                    break ConvergenceCheck;</span>
+<span class="fc" id="L174">                    tol = Math.abs(xmin) * relativeTolerance + absoluteTolerance;</span>
+<span class="fc" id="L175">                    break ConvergenceCheck;</span>
                 }
             }
 
             /* If function value increased, origin remains unchanged */
             /* but new point may now qualify as w. */
-<span class="fc bfc" id="L158" title="All 2 branches covered.">            if (u &lt; 0.0) {</span>
-<span class="fc" id="L159">                a = u;</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            if (u &lt; 0.0) {</span>
+<span class="fc" id="L182">                a = u;</span>
             } else {
-<span class="fc" id="L161">                b = u;</span>
-<span class="fc" id="L162">                braktd = true;</span>
+<span class="fc" id="L184">                b = u;</span>
+<span class="fc" id="L185">                minIsBracketed = true;</span>
             }
-<span class="fc" id="L164">            xw = u;</span>
-<span class="fc" id="L165">            fw = fu;</span>
-<span class="fc" id="L166">            gw = gu;</span>
+<span class="fc" id="L187">            xw = u;</span>
+<span class="fc" id="L188">            fw = fu;</span>
+<span class="fc" id="L189">            gw = gu;</span>
         }
 
-<span class="fc" id="L169">        double twotol = tol + tol;</span>
-<span class="fc" id="L170">        double xmidpt = 0.5 * (a + b);</span>
+<span class="fc" id="L192">        double twotol = tol + tol;</span>
+<span class="fc" id="L193">        double xmidpt = 0.5 * (a + b);</span>
 
         /* Check termination criteria */
-<span class="fc bfc" id="L173" title="All 2 branches covered.">        boolean convrg = (Math.abs(xmidpt) &lt;= twotol - 0.5 * (b - a))</span>
-<span class="pc bpc" id="L174" title="1 of 4 branches missed.">                || (Math.abs(gmin) &lt;= gtest2 &amp;&amp; fmin &lt; oldf</span>
-<span class="pc bpc" id="L175" title="3 of 4 branches missed.">                &amp;&amp; ((Math.abs(xmin - xbnd) &gt; tol) || (!braktd)));</span>
-<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (convrg) {</span>
-<span class="pc bpc" id="L177" title="1 of 2 branches missed.">            if (xmin != 0.0) {</span>
-<span class="fc" id="L178">                return false;</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        boolean convrg = (Math.abs(xmidpt) &lt;= twotol - 0.5 * (b - a))</span>
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">                || (Math.abs(gmin) &lt;= gtest2 &amp;&amp; fmin &lt; oldFunctionValue</span>
+<span class="pc bpc" id="L198" title="3 of 4 branches missed.">                &amp;&amp; ((Math.abs(xmin - xBound) &gt; tol) || (!minIsBracketed)));</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (convrg) {</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">            if (xmin != 0.0) {</span>
+<span class="fc" id="L201">                return false;</span>
             }
 
             /*
@@ -184,132 +207,132 @@ class GetPointCubic {
              * unimodality constant, tol. If the change in f(x) is larger than
              * expected, reduce the value of tol.
              */
-<span class="nc bnc" id="L187" title="All 2 branches missed.">            if (Math.abs(oldf - fw) &lt;= fpresn) {</span>
-<span class="nc" id="L188">                throw new MinimizationError(&quot;getptciter failed. |oldf - fw| &lt;= fpresn&quot;);</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            if (Math.abs(oldFunctionValue - fw) &lt;= fpresn) {</span>
+<span class="nc" id="L211">                throw new MinimizationError(&quot;getptciter failed. |oldf - fw| &lt;= fpresn&quot;);</span>
             }
-<span class="nc" id="L190">            tol = 0.1 * tol;</span>
-<span class="nc bnc" id="L191" title="All 2 branches missed.">            if (tol &lt; tnytol) {</span>
-<span class="nc" id="L192">                throw new MinimizationError(&quot;getptciter failed. tol &lt; tnytol&quot;);</span>
+<span class="nc" id="L213">            tol = 0.1 * tol;</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">            if (tol &lt; tnytol) {</span>
+<span class="nc" id="L215">                throw new MinimizationError(&quot;getptciter failed. tol &lt; tnytol&quot;);</span>
             }
-<span class="nc" id="L194">            reltol = 0.1 * reltol;</span>
-<span class="nc" id="L195">            abstol = 0.1 * abstol;</span>
-<span class="nc" id="L196">            twotol = 0.1 * twotol;</span>
+<span class="nc" id="L217">            relativeTolerance = 0.1 * relativeTolerance;</span>
+<span class="nc" id="L218">            absoluteTolerance = 0.1 * absoluteTolerance;</span>
+<span class="nc" id="L219">            twotol = 0.1 * twotol;</span>
         }
 
         /* Continue with the computation of a trial step length */
-<span class="fc" id="L200">        double r = 0.0;</span>
-<span class="fc" id="L201">        double q = 0.0;</span>
-<span class="fc" id="L202">        double s = 0.0;</span>
+<span class="fc" id="L223">        double r = 0.0;</span>
+<span class="fc" id="L224">        double q = 0.0;</span>
+<span class="fc" id="L225">        double s = 0.0;</span>
         MinimumFound:
         {
-<span class="pc bpc" id="L205" title="1 of 2 branches missed.">            if (Math.abs(e) &gt; tol) {</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">            if (Math.abs(e) &gt; tol) {</span>
                 /* Fit cubic through xmin and xw */
-<span class="fc" id="L207">                r = 3.0 * (fmin - fw) / xw + gmin + gw;</span>
-<span class="fc" id="L208">                double absr = Math.abs(r);</span>
-<span class="fc" id="L209">                q = absr;</span>
-<span class="pc bpc" id="L210" title="2 of 4 branches missed.">                if (gw != 0.0 &amp;&amp; gmin != 0.0) {</span>
+<span class="fc" id="L230">                r = 3.0 * (fmin - fw) / xw + gmin + gw;</span>
+<span class="fc" id="L231">                double absr = Math.abs(r);</span>
+<span class="fc" id="L232">                q = absr;</span>
+<span class="pc bpc" id="L233" title="2 of 4 branches missed.">                if (gw != 0.0 &amp;&amp; gmin != 0.0) {</span>
                     /* Compute the square root of (r*r - gmin*gw) in a way
                      which avoids underflow and overflow. */
-<span class="fc" id="L213">                    double abgw = Math.abs(gw);</span>
-<span class="fc" id="L214">                    double abgmin = Math.abs(gmin);</span>
-<span class="fc" id="L215">                    s = Math.sqrt(abgmin) * Math.sqrt(abgw);</span>
-<span class="fc bfc" id="L216" title="All 2 branches covered.">                    if (gw / abgw * gmin &gt; 0.0) {</span>
-<span class="pc bpc" id="L217" title="1 of 4 branches missed.">                        if (r &gt;= s || r &lt;= -s) {</span>
+<span class="fc" id="L236">                    double abgw = Math.abs(gw);</span>
+<span class="fc" id="L237">                    double abgmin = Math.abs(gmin);</span>
+<span class="fc" id="L238">                    s = Math.sqrt(abgmin) * Math.sqrt(abgw);</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                    if (gw / abgw * gmin &gt; 0.0) {</span>
+<span class="pc bpc" id="L240" title="1 of 4 branches missed.">                        if (r &gt;= s || r &lt;= -s) {</span>
                             /* Compute the square root of r*r - s*s */
-<span class="fc" id="L219">                            q = Math.sqrt(Math.abs(r + s)) * Math.sqrt(Math.abs(r - s));</span>
+<span class="fc" id="L242">                            q = Math.sqrt(Math.abs(r + s)) * Math.sqrt(Math.abs(r - s));</span>
                         } else {
-<span class="fc" id="L221">                            r = 0.0;</span>
-<span class="fc" id="L222">                            q = 0.0;</span>
-<span class="fc" id="L223">                            break MinimumFound;</span>
+<span class="fc" id="L244">                            r = 0.0;</span>
+<span class="fc" id="L245">                            q = 0.0;</span>
+<span class="fc" id="L246">                            break MinimumFound;</span>
                         }
                     } else {
                         /* Compute the square root of r*r + s*s. */
-<span class="fc" id="L227">                        double sumsq = 1.0;</span>
-<span class="fc" id="L228">                        double p = 0.0;</span>
+<span class="fc" id="L250">                        double sumsq = 1.0;</span>
+<span class="fc" id="L251">                        double p = 0.0;</span>
                         double scale;
-<span class="fc bfc" id="L230" title="All 2 branches covered.">                        if (absr &gt;= s) {</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">                        if (absr &gt;= s) {</span>
                             /* There is a possibility of underflow. */
-<span class="pc bpc" id="L232" title="1 of 2 branches missed.">                            if (absr &gt; rtsmll) {</span>
-<span class="fc" id="L233">                                p = absr * rtsmll;</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">                            if (absr &gt; rtsmll) {</span>
+<span class="fc" id="L256">                                p = absr * rtsmll;</span>
                             }
-<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                            if (s &gt;= p) {</span>
-<span class="fc" id="L236">                                double value = s / absr;</span>
-<span class="fc" id="L237">                                sumsq = 1.0 + value * value;</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">                            if (s &gt;= p) {</span>
+<span class="fc" id="L259">                                double value = s / absr;</span>
+<span class="fc" id="L260">                                sumsq = 1.0 + value * value;</span>
                             }
-<span class="fc" id="L239">                            scale = absr;</span>
+<span class="fc" id="L262">                            scale = absr;</span>
                         } else {
                             /* There is a possibility of overflow. */
-<span class="pc bpc" id="L242" title="1 of 2 branches missed.">                            if (s &gt; rtsmll) {</span>
-<span class="fc" id="L243">                                p = s * rtsmll;</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">                            if (s &gt; rtsmll) {</span>
+<span class="fc" id="L266">                                p = s * rtsmll;</span>
                             }
-<span class="pc bpc" id="L245" title="1 of 2 branches missed.">                            if (absr &gt;= p) {</span>
-<span class="fc" id="L246">                                double value = absr / s;</span>
-<span class="fc" id="L247">                                sumsq = 1.0 + value * value;</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">                            if (absr &gt;= p) {</span>
+<span class="fc" id="L269">                                double value = absr / s;</span>
+<span class="fc" id="L270">                                sumsq = 1.0 + value * value;</span>
                             }
-<span class="fc" id="L249">                            scale = s;</span>
+<span class="fc" id="L272">                            scale = s;</span>
                         }
-<span class="fc" id="L251">                        sumsq = Math.sqrt(sumsq);</span>
-<span class="fc" id="L252">                        q = big;</span>
-<span class="pc bpc" id="L253" title="1 of 2 branches missed.">                        if (scale &lt; big / sumsq) {</span>
-<span class="fc" id="L254">                            q = scale * sumsq;</span>
+<span class="fc" id="L274">                        sumsq = Math.sqrt(sumsq);</span>
+<span class="fc" id="L275">                        q = big;</span>
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">                        if (scale &lt; big / sumsq) {</span>
+<span class="fc" id="L277">                            q = scale * sumsq;</span>
                         }
                     }
                 }
 
                 /* Compute the minimum of fitted cubic */
-<span class="fc bfc" id="L260" title="All 2 branches covered.">                if (xw &lt; 0.0) {</span>
-<span class="fc" id="L261">                    q = -q;</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">                if (xw &lt; 0.0) {</span>
+<span class="fc" id="L284">                    q = -q;</span>
                 }
-<span class="fc" id="L263">                s = xw * (gmin - r - q);</span>
-<span class="fc" id="L264">                q = gw - gmin + q + q;</span>
-<span class="fc bfc" id="L265" title="All 2 branches covered.">                if (q &gt; 0.0) {</span>
-<span class="fc" id="L266">                    s = -s;</span>
+<span class="fc" id="L286">                s = xw * (gmin - r - q);</span>
+<span class="fc" id="L287">                q = gw - gmin + q + q;</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">                if (q &gt; 0.0) {</span>
+<span class="fc" id="L289">                    s = -s;</span>
                 }
-<span class="fc bfc" id="L268" title="All 2 branches covered.">                if (q &lt;= 0.0) {</span>
-<span class="fc" id="L269">                    q = -q;</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">                if (q &lt;= 0.0) {</span>
+<span class="fc" id="L292">                    q = -q;</span>
                 }
-<span class="fc" id="L271">                r = e;</span>
-<span class="fc bfc" id="L272" title="All 4 branches covered.">                if (b1 != step || braktd) {</span>
-<span class="fc" id="L273">                    e = step;</span>
+<span class="fc" id="L294">                r = e;</span>
+<span class="fc bfc" id="L295" title="All 4 branches covered.">                if (b1 != step || minIsBracketed) {</span>
+<span class="fc" id="L296">                    e = step;</span>
                 }
             }
         }
 
         /* Construct an artificial bound on the estimated steplength */
-<span class="fc" id="L279">        double a1 = a;</span>
-<span class="fc" id="L280">        b1 = b;</span>
-<span class="fc" id="L281">        step = xmidpt;</span>
-<span class="pc bpc" id="L282" title="2 of 10 branches missed.">        if ((!braktd) || ((a == 0.0 &amp;&amp; xw &lt; 0.0) || (b == 0.0 &amp;&amp; xw &gt; 0.0))) {</span>
-<span class="pc bpc" id="L283" title="1 of 2 branches missed.">            if (braktd) {</span>
+<span class="fc" id="L302">        double a1 = a;</span>
+<span class="fc" id="L303">        b1 = b;</span>
+<span class="fc" id="L304">        step = xmidpt;</span>
+<span class="pc bpc" id="L305" title="2 of 10 branches missed.">        if ((!minIsBracketed) || ((a == 0.0 &amp;&amp; xw &lt; 0.0) || (b == 0.0 &amp;&amp; xw &gt; 0.0))) {</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">            if (minIsBracketed) {</span>
                 /* If the minimum is not bracketed by 0 and xw the step must lie
                  within (a1,b1). */
-<span class="nc" id="L286">                double d1 = xw;</span>
-<span class="nc" id="L287">                double d2 = a;</span>
-<span class="nc bnc" id="L288" title="All 2 branches missed.">                if (a == 0.0) {</span>
-<span class="nc" id="L289">                    d2 = b;</span>
+<span class="nc" id="L309">                double d1 = xw;</span>
+<span class="nc" id="L310">                double d2 = a;</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">                if (a == 0.0) {</span>
+<span class="nc" id="L312">                    d2 = b;</span>
                 }
                 /* This line might be : */
                 /* if (*a == 0.0) d2 = *e */
-<span class="nc" id="L293">                u = -d1 / d2;</span>
-<span class="nc" id="L294">                step = 5.0 * d2 * (0.1 + 1.0 / u) / 11.0;</span>
-<span class="nc bnc" id="L295" title="All 2 branches missed.">                if (u &lt; 1.0) {</span>
-<span class="nc" id="L296">                    step = 0.5 * d2 * Math.sqrt(u);</span>
+<span class="nc" id="L316">                u = -d1 / d2;</span>
+<span class="nc" id="L317">                step = 5.0 * d2 * (0.1 + 1.0 / u) / 11.0;</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">                if (u &lt; 1.0) {</span>
+<span class="nc" id="L319">                    step = 0.5 * d2 * Math.sqrt(u);</span>
                 }
-<span class="nc" id="L298">            } else {</span>
-<span class="fc" id="L299">                step = -factor * xw;</span>
-<span class="fc bfc" id="L300" title="All 2 branches covered.">                if (step &gt; scxbnd) {</span>
-<span class="fc" id="L301">                    step = scxbnd;</span>
+<span class="nc" id="L321">            } else {</span>
+<span class="fc" id="L322">                step = -factor * xw;</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">                if (step &gt; stepBound) {</span>
+<span class="fc" id="L324">                    step = stepBound;</span>
                 }
-<span class="fc bfc" id="L303" title="All 2 branches covered.">                if (step != scxbnd) {</span>
-<span class="fc" id="L304">                    factor = 5.0 * factor;</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">                if (step != stepBound) {</span>
+<span class="fc" id="L327">                    factor = 5.0 * factor;</span>
                 }
             }
             /* If the minimum is bracketed by 0 and xw the step must lie within (a,b) */
-<span class="pc bpc" id="L308" title="1 of 2 branches missed.">            if (step &lt;= 0.0) {</span>
-<span class="nc" id="L309">                a1 = step;</span>
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">            if (step &lt;= 0.0) {</span>
+<span class="nc" id="L332">                a1 = step;</span>
             }
-<span class="pc bpc" id="L311" title="1 of 2 branches missed.">            if (step &gt; 0.0) {</span>
-<span class="fc" id="L312">                b1 = step;</span>
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">            if (step &gt; 0.0) {</span>
+<span class="fc" id="L335">                b1 = step;</span>
             }
         }
 
@@ -318,51 +341,45 @@ class GetPointCubic {
          * required interval or it is greater than half the step obtained
          * during the last-but-one iteration.
          */
-<span class="pc bpc" id="L321" title="1 of 6 branches missed.">        if (Math.abs(s) &lt;= Math.abs(0.5 * q * r) || s &lt;= q * a1 || s &gt;= q * b1) {</span>
-<span class="fc" id="L322">            e = b - a;</span>
+<span class="pc bpc" id="L344" title="1 of 6 branches missed.">        if (Math.abs(s) &lt;= Math.abs(0.5 * q * r) || s &lt;= q * a1 || s &gt;= q * b1) {</span>
+<span class="fc" id="L345">            e = b - a;</span>
         } else {
             /* A cubic interpolation step */
-<span class="nc" id="L325">            step = s / q;</span>
+<span class="nc" id="L348">            step = s / q;</span>
 
             /* The function must not be evaluated too close to a or b. */
-<span class="nc bnc" id="L328" title="All 4 branches missed.">            if (step - a &lt; twotol || b - step &lt; twotol) {</span>
-<span class="nc bnc" id="L329" title="All 2 branches missed.">                if (xmidpt &lt;= 0.0) {</span>
-<span class="nc" id="L330">                    step = -tol;</span>
+<span class="nc bnc" id="L351" title="All 4 branches missed.">            if (step - a &lt; twotol || b - step &lt; twotol) {</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">                if (xmidpt &lt;= 0.0) {</span>
+<span class="nc" id="L353">                    step = -tol;</span>
                 } else {
-<span class="nc" id="L332">                    step = tol;</span>
+<span class="nc" id="L355">                    step = tol;</span>
                 }
             }
         }
 
-        /* If the step is too large, replace by the scaled bound (so as to */
-        /* compute the new point on the boundary). */
-<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (step &gt;= scxbnd) {</span>
-<span class="fc" id="L340">            step = scxbnd;</span>
-            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
-<span class="fc" id="L342">            scxbnd -= (reltol * Math.abs(xbnd) + abstol) / (1.0 + reltol);</span>
+<span class="fc" id="L360">        constrainStep();</span>
+<span class="fc" id="L361">        u = step;</span>
+<span class="pc bpc" id="L362" title="3 of 4 branches missed.">        if (Math.abs(step) &lt; tol &amp;&amp; step &lt; 0.0) {</span>
+<span class="nc" id="L363">            u = -tol;</span>
         }
-<span class="fc" id="L344">        u = step;</span>
-<span class="pc bpc" id="L345" title="3 of 4 branches missed.">        if (Math.abs(step) &lt; tol &amp;&amp; step &lt; 0.0) {</span>
-<span class="nc" id="L346">            u = -tol;</span>
+<span class="pc bpc" id="L365" title="3 of 4 branches missed.">        if (Math.abs(step) &lt; tol &amp;&amp; step &gt;= 0.0) {</span>
+<span class="nc" id="L366">            u = tol;</span>
         }
-<span class="pc bpc" id="L348" title="3 of 4 branches missed.">        if (Math.abs(step) &lt; tol &amp;&amp; step &gt;= 0.0) {</span>
-<span class="nc" id="L349">            u = tol;</span>
-        }
-        
-<span class="fc" id="L352">        return true;</span>
+
+<span class="fc" id="L369">        return true;</span>
     }
-    
+
     public double xmin() {
-<span class="fc" id="L356">        return xmin;</span>
+<span class="fc" id="L373">        return xmin;</span>
     }
-    
+
     public double fmin() {
-<span class="fc" id="L360">        return fmin;</span>
+<span class="fc" id="L377">        return fmin;</span>
     }
-    
+
     public double u() {
-<span class="fc" id="L364">        return u;</span>
+<span class="fc" id="L381">        return u;</span>
     }
-    
+
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.4.201502262128</span></div></body></html>

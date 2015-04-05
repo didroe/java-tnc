@@ -202,8 +202,8 @@ public class TncImpl {
     /**
      * Unscale x
      */
-    public void unscalex(int n, double[] x, double[] xscale, double xoffset[]) {
-        for (int i = 0; i < n; i++) {
+    public void unscalex(double[] x, double[] xscale, double xoffset[]) {
+        for (int i = 0; i < x.length; i++) {
             x[i] = x[i] * xscale[i] + xoffset[i];
         }
     }
@@ -211,8 +211,8 @@ public class TncImpl {
     /**
      * Scale x
      */
-    public void scalex(int n, double[] x, double[] xscale, double[] xoffset) {
-        for (int i = 0; i < n; i++) {
+    public void scalex(double[] x, double[] xscale, double[] xoffset) {
+        for (int i = 0; i < x.length; i++) {
             if (xscale[i] > 0.0) {
                 x[i] = (x[i] - xoffset[i]) / xscale[i];
             }
@@ -222,8 +222,8 @@ public class TncImpl {
     /**
      * Scale g
      */
-    public void scaleg(int n, double[] g, double[] xscale, double fscale) {
-        for (int i = 0; i < n; i++) {
+    public void scaleg(double[] g, double[] xscale, double fscale) {
+        for (int i = 0; i < g.length; i++) {
             g[i] *= xscale[i] * fscale;
         }
     }
@@ -277,7 +277,7 @@ public class TncImpl {
         double[] g = new double[n];
         double[] temp = new double[n];
         double[] diagb = new double[n];
-        double[] pk = new double[n];
+        double[] searchDirection = new double[n];
         double[] sk = new double[n];
         double[] yk = new double[n];
         double[] sr = new double[n];
@@ -300,14 +300,14 @@ public class TncImpl {
         ref.f = functionEvaluator.evaluate(x, gfull);
 
         /* Initial scaling */
-        scalex(n, x, xscale, xoffset);
+        scalex(x, xscale, xoffset);
         ref.f *= fscale;
 
         /* initial pivot calculation */
         setConstraints(n, x, pivot, xscale, xoffset, low, up);
 
         ArrayMath.copy(gfull, g);
-        scaleg(n, g, xscale, fscale);
+        scaleg(g, xscale, fscale);
 
         /* Test the lagrange multipliers to see if they are non-negative. */
         for (int i = 0; i < n; i++) {
@@ -316,7 +316,7 @@ public class TncImpl {
             }
         }
 
-        project(n, g, pivot);
+        project(g, pivot);
 
         /* Set initial values to other parameters */
         double gnorm = ArrayMath.euclidianNorm(g);
@@ -343,7 +343,7 @@ public class TncImpl {
             if (ArrayMath.euclidianNorm(g) <= pgtol * fscale) {
                 /* |PG| == 0.0 => local minimum */
                 ArrayMath.copy(gfull, g);
-                project(n, g, pivot);
+                project(g, pivot);
                 if (logger.isDebugEnabled()) {
                     logger.debug("|pg| = {} -> local minimum", ArrayMath.euclidianNorm(g) / fscale);
                 }
@@ -378,7 +378,7 @@ public class TncImpl {
             }
 
             ArrayMath.copy(x, temp);
-            project(n, temp, pivot);
+            project(temp, pivot);
             double xnorm = ArrayMath.euclidianNorm(temp);
             int oldnfeval = functionEvaluator.getNumEvaluations();
 
@@ -391,7 +391,7 @@ public class TncImpl {
             tmpDirRef.x = x;
             tmpDirRef.yk = yk;
             tmpDirRef.yr = yr;
-            tmpDirRef.zsol = pk;
+            tmpDirRef.zsol = searchDirection;
             tnc_direction(g, n, maxCGit, maxnfeval, upd1, yksk, yrsr, lreset, xscale,
                     xoffset, fscale, accuracy, gnorm, xnorm, low, up, tmpDirRef);
             diagb = tmpDirRef.diagb;
@@ -401,7 +401,7 @@ public class TncImpl {
             x = tmpDirRef.x;
             yk = tmpDirRef.yk;
             yr = tmpDirRef.yr;
-            pk = tmpDirRef.zsol;
+            searchDirection = tmpDirRef.zsol;
 
             if (!newcon) {
                 if (!lreset) {
@@ -421,21 +421,21 @@ public class TncImpl {
 
             ArrayMath.copy(g, oldg);
             double oldf = ref.f;
-            double oldgtp = ArrayMath.dotProduct(pk, g);
+            double oldgtp = ArrayMath.dotProduct(searchDirection, g);
 
             /* Maximum unconstrained step length */
-            double ustpmax = stepmx / (ArrayMath.euclidianNorm(pk) + DBL_EPSILON);
+            double ustpmax = stepmx / (ArrayMath.euclidianNorm(searchDirection) + DBL_EPSILON);
 
             /* Maximum constrained step length */
-            double spe = stepMax(ustpmax, n, x, pk, pivot, low, up, xscale, xoffset);
+            double spe = stepMax(ustpmax, n, x, searchDirection, pivot, low, up, xscale, xoffset);
 
             if (spe > 0.0) {
                 /* Set the initial step length */
                 alpha = initialStep(ref.f, fmin / fscale, oldgtp, spe);
 
                 /* Perform the linear search */
-                LinearSearchResult lsResult = linearSearch(n, low, up, xscale, xoffset, fscale, pivot,
-                        eta, ftol, spe, pk, x, ref.f, alpha, gfull);
+                LineSearchResult lsResult = lineSearch(low, up, xscale, xoffset, fscale, pivot,
+                        eta, ftol, spe, searchDirection, x, ref.f, alpha, gfull);
                 alpha = lsResult.alpha();
                 ref.f = lsResult.f();
                 ArrayMath.copy(lsResult.g(), gfull);
@@ -461,7 +461,7 @@ public class TncImpl {
             }
 
             if (newcon) {
-                if (!addConstraint(n, x, pk, pivot, low, up, xscale, xoffset)) {
+                if (!addConstraint(n, x, searchDirection, pivot, low, up, xscale, xoffset)) {
                     if (functionEvaluator.getNumEvaluations() == oldnfeval) {
                         throw new MinimizationError("Unable to progress");
                     }
@@ -473,9 +473,9 @@ public class TncImpl {
 
             /* Invoke the callback function */
             if (callback != null) {
-                unscalex(n, x, xscale, xoffset);
+                unscalex(x, xscale, xoffset);
                 callback.tnc_callback(x);
-                scalex(n, x, xscale, xoffset);
+                scalex(x, xscale, xoffset);
             }
 
             /* Set up parameters used in convergence and resetting tests */
@@ -494,10 +494,10 @@ public class TncImpl {
             }
 
             ArrayMath.copy(gfull, g);
-            scaleg(n, g, xscale, fscale);
+            scaleg(g, xscale, fscale);
 
             ArrayMath.copy(g, temp);
-            project(n, temp, pivot);
+            project(temp, pivot);
             gnorm = ArrayMath.euclidianNorm(temp);
 
             /* Reset pivot */
@@ -508,7 +508,7 @@ public class TncImpl {
             if (remcon) {
                 /* Recalculate gnorm and reset fLastConstraint */
                 ArrayMath.copy(g, temp);
-                project(n, temp, pivot);
+                project(temp, pivot);
                 gnorm = ArrayMath.euclidianNorm(temp);
                 fLastConstraint = ref.f;
             }
@@ -522,17 +522,17 @@ public class TncImpl {
                     rc = CompletionReason.TNC_FCONVERGED;
                     break;
                 }
-                if (alpha * ArrayMath.euclidianNorm(pk) <= xtol) {
+                if (alpha * ArrayMath.euclidianNorm(searchDirection) <= xtol) {
                     if (logger.isDebugEnabled()) {
                         logger.debug("|xn-xn-1] = %g -> convergence",
-                                alpha * ArrayMath.euclidianNorm(pk));
+                                alpha * ArrayMath.euclidianNorm(searchDirection));
                     }
                     rc = CompletionReason.TNC_XCONVERGED;
                     break;
                 }
             }
 
-            project(n, g, pivot);
+            project(g, pivot);
 
             if (logger.isTraceEnabled()) {
                 printCurrentIteration(n, ref.f / fscale, gfull,
@@ -544,7 +544,7 @@ public class TncImpl {
             if (!newcon) {
                 for (int i = 0; i < n; i++) {
                     yk[i] = g[i] - oldg[i];
-                    sk[i] = alpha * pk[i];
+                    sk[i] = alpha * searchDirection[i];
                 }
 
                 /* Set up parameters used in updating the preconditioning strategy */
@@ -570,7 +570,7 @@ public class TncImpl {
         }
 
         /* Unscaling */
-        unscalex(n, x, xscale, xoffset);
+        unscalex(x, xscale, xoffset);
         ArrayMath.clip(x, low, up);
         ref.f /= fscale;
 
@@ -595,8 +595,8 @@ public class TncImpl {
     /**
      * Set x[i] = 0.0 if direction i is currently constrained
      */
-    public void project(int n, double[] x, int[] pivot) {
-        for (int i = 0; i < n; i++) {
+    public void project(double[] x, int[] pivot) {
+        for (int i = 0; i < x.length; i++) {
             if (pivot[i] != 0) {
                 x[i] = 0.0;
             }
@@ -731,7 +731,7 @@ public class TncImpl {
         if (maxCGit == 0) {
             ArrayMath.copy(g, ref.zsol);
             ArrayMath.negate(ref.zsol);
-            project(n, ref.zsol, ref.pivot);
+            project(ref.zsol, ref.pivot);
             return;
         }
 
@@ -763,10 +763,10 @@ public class TncImpl {
         /* Main iteration */
         for (int k = 0; k < maxCGit; k++) {
             /* CG iteration to solve system of equations */
-            project(n, r, ref.pivot);
+            project(r, ref.pivot);
             msolve(r, zk, n, ref.sk, ref.yk, ref.diagb, ref.sr, ref.yr, upd1, yksk, yrsr,
                     lreset);
-            project(n, zk, ref.pivot);
+            project(zk, ref.pivot);
             double rz = ArrayMath.dotProduct(r, zk);
 
             if (rz / rhsnrm < tol) {
@@ -774,7 +774,7 @@ public class TncImpl {
                 if (k == 0) {
                     ArrayMath.copy(g, ref.zsol);
                     ArrayMath.negate(ref.zsol);
-                    project(n, ref.zsol, ref.pivot);
+                    project(ref.zsol, ref.pivot);
                 }
                 break;
             }
@@ -789,10 +789,10 @@ public class TncImpl {
                 v[i] = zk[i] + beta * v[i];
             }
 
-            project(n, v, ref.pivot);
+            project(v, ref.pivot);
             hessianTimesVector(v, gv, n, ref.x, g, xscale, xoffset, fscale,
                     accuracy, xnorm, low, up);
-            project(n, gv, ref.pivot);
+            project(gv, ref.pivot);
 
             double vgv = ArrayMath.dotProduct(v, gv);
             if (vgv / rhsnrm < tol) {
@@ -801,7 +801,7 @@ public class TncImpl {
                     msolve(g, ref.zsol, n, ref.sk, ref.yk, ref.diagb, ref.sr, ref.yr, upd1, yksk,
                             yrsr, lreset);
                     ArrayMath.negate(ref.zsol);
-                    project(n, ref.zsol, ref.pivot);
+                    project(ref.zsol, ref.pivot);
                 }
                 break;
             }
@@ -886,11 +886,11 @@ public class TncImpl {
             xv[i] = x[i] + delta * v[i];
         }
 
-        unscalex(n, xv, xscale, xoffset);
+        unscalex(xv, xscale, xoffset);
         ArrayMath.clip(xv, low, up);
         functionEvaluator.evaluate(xv, gv);
 
-        scaleg(n, gv, xscale, fscale);
+        scaleg(gv, xscale, fscale);
 
         double dinv = 1.0 / delta;
         for (int i = 0; i < n; i++) {
@@ -1032,13 +1032,13 @@ public class TncImpl {
         }
     }
 
-    class LinearSearchResult {
+    class LineSearchResult {
         private final double alpha;
         private final double[] x;
         private final double f;
         private final double[] g;
         
-        public LinearSearchResult(double alpha, double[] x, double f, double[] g) {
+        public LineSearchResult(double alpha, double[] x, double f, double[] g) {
             this.alpha = alpha;
             this.x = x;
             this.f = f;
@@ -1064,29 +1064,36 @@ public class TncImpl {
 
     
     /**
-     * Line search algorithm of gill and murray
+     * Line search algorithm of Gill and Murray.
+     * This solves the problem:
+     *      minimise g(alpha), subject to alpha > 0
+     *      where g(alpha) = f(x + alpha.p) where p is the current search 
+     * direction of the outer minimisation problem and x is the current 
+     * solution of said problem.
+     * The search direction must be a descent direction of sufficient descent
+     * and must be gradient related.
      */
-    public LinearSearchResult linearSearch(int n, double[] low,
+    public LineSearchResult lineSearch(double[] low,
             double[] up, double[] xscale, double[] xoffset, double fscale,
-            int[] pivot, double eta, double ftol, double xbnd, double[] p,
+            int[] pivot, double eta, double ftol, double xBound, double[] searchDirection,
             double[] x, double f, double alpha, double gfull[]) {
         final int MAX_ITERATIONS = 64;
 
-        double[] temp = new double[n];
-        double[] tempgfull = new double[n];
-        double[] newgfull = new double[n];
+        double[] temp = new double[x.length];
+        double[] tempgfull = new double[x.length];
+        double[] newgfull = new double[x.length];
 
         ArrayMath.copy(gfull, temp);
-        scaleg(n, temp, xscale, fscale);
-        double initGu = ArrayMath.dotProduct(temp, p);
+        scaleg(temp, xscale, fscale);
+        double initGu = ArrayMath.dotProduct(temp, searchDirection);
 
         ArrayMath.copy(x, temp);
-        project(n, temp, pivot);
+        project(temp, pivot);
         double xnorm = ArrayMath.euclidianNorm(temp);
 
         // Absolute and relative tolerances for the linear search
         double rteps = Math.sqrt(DBL_EPSILON);
-        double pe = ArrayMath.euclidianNorm(p) + DBL_EPSILON;
+        double pe = ArrayMath.euclidianNorm(searchDirection) + DBL_EPSILON;
         double reltol = rteps * (xnorm + 1.0) / pe;
         double abstol = -DBL_EPSILON * (1.0 + Math.abs(f)) / (initGu - DBL_EPSILON);
 
@@ -1100,7 +1107,7 @@ public class TncImpl {
         // Estimated relative precision in f(x)
         double fpresn = ftol;
 
-        GetPointCubic getPointCubic = new GetPointCubic(reltol, abstol, tnytol, eta, 1e-4, xbnd, alpha, f, initGu);
+        GetPointCubic getPointCubic = new GetPointCubic(reltol, abstol, tnytol, eta, 1e-4, xBound, alpha, f, initGu);
 
         boolean requiresFurtherEvaluation = true;
         while (requiresFurtherEvaluation) {
@@ -1109,21 +1116,21 @@ public class TncImpl {
             }
             itcnt++;
 
-            double ualpha = getPointCubic.xmin() + getPointCubic.u();
-            for (int i = 0; i < n; i++) {
-                temp[i] = x[i] + ualpha * p[i];
+            double ualpha = getPointCubic.xmin() + getPointCubic.resultStep();
+            for (int i = 0; i < x.length; i++) {
+                temp[i] = x[i] + ualpha * searchDirection[i];
             }
 
             // Function evaluation
-            unscalex(n, temp, xscale, xoffset);
+            unscalex(temp, xscale, xoffset);
             ArrayMath.clip(temp, low, up);
             double fu = functionEvaluator.evaluate(temp, tempgfull) * fscale;
 
             ArrayMath.copy(tempgfull, temp);
-            scaleg(n, temp, xscale, fscale);
-            double gu = ArrayMath.dotProduct(temp, p);
+            scaleg(temp, xscale, fscale);
+            double gu = ArrayMath.dotProduct(temp, searchDirection);
 
-            requiresFurtherEvaluation = getPointCubic.iterate(big, rtsmll, tnytol, fpresn, xbnd, fu, gu);
+            requiresFurtherEvaluation = getPointCubic.iterate(big, rtsmll, tnytol, fpresn, fu, gu);
 
             // New best point
             if (getPointCubic.xmin() == ualpha) {
@@ -1133,8 +1140,8 @@ public class TncImpl {
 
         double[] newX = new double[x.length];
         ArrayMath.copy(x, newX);
-        ArrayMath.axPlusY(getPointCubic.xmin(), p, newX);
-        return new LinearSearchResult(getPointCubic.xmin(), newX, getPointCubic.fmin(), newgfull);
+        ArrayMath.axPlusY(getPointCubic.xmin(), searchDirection, newX);
+        return new LineSearchResult(getPointCubic.xmin(), newX, getPointCubic.fmin(), newgfull);
     }
 
 }

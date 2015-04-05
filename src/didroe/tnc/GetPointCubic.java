@@ -4,175 +4,217 @@
 package didroe.tnc;
 
 /**
- * An algorithm for finding a step-length, called repeatedly by routines which require a
- * step length to be computed using cubic interpolation. The parameters contain information
- * about the interval in which a lower point is to be found and from this the algorithm 
- * computes a point at which the function can be evaluated by the calling program.
+ * An algorithm for finding a step-length, called repeatedly by routines which require a step length
+ * to be computed using cubic interpolation. The parameters contain information about the interval
+ * in which a lower point is to be found and from this the algorithm computes a point at which the
+ * function can be evaluated by the calling program.
+ *
  * @author Did
  */
 class GetPointCubic {
-        private final double oldf;
-        private final double gtest1;
-        private final double gtest2;
 
-        private double reltol;
-        private double abstol;
-        private double u;
-        private double xmin;
-        private double fmin;
-        private double gmin;
-        private double xw;
-        private double fw;
-        private double gw;
-        private double a;
-        private double b;
-        private double b1;
-        private double scxbnd;
-        private double e;
-        private double step;
-        private double factor;
-        private boolean braktd;
-        private double tol;
+    /**
+     * The original function value.
+     */
+    private final double oldFunctionValue;
 
-    
-    public GetPointCubic(double reltol, double abstol, double tnytol, double eta, double rmu, 
-            double xbnd, double u, double fu, double gu) {
-        if (u <= 0.0 || xbnd <= tnytol || gu > 0.0) {
+    /**
+     * Bound on the step
+     */
+    private final double stepBound;
+
+    private final double gtest1;
+    private final double gtest2;
+
+    private double relativeTolerance;
+    private double absoluteTolerance;
+    private double resultStep;
+    private double xmin;
+    private double fmin;
+    private double gmin;
+    private double xw;
+    private double fw;
+    private double gw;
+
+    /**
+     * Lower bound of interval containing the minimiser.
+     */
+    private double intervalLow;
+    /**
+     * Upper bound of interval containing the minimiser.
+     */
+    private double intervalUp;
+    /**
+     * Is the minimum bracketed by the interval? Starts off as false.
+     */
+    private boolean minIsBracketed = false;
+
+    private double b1;
+    private double e;
+    private double step;
+    private double factor;
+    private double tolerance;
+
+    /**
+     * A bound on the step to be taken.
+     * FIXME: What does "scaled" mean
+     */
+    private double scaledStepBound;
+
+    /**
+     * FIXME: Better name
+     */
+    private void updateStepValues() {
+        // If the step is too large, replace by the scaled bound (so as to compute
+        // the new point on the boundary). 
+        if (step >= scaledStepBound) {
+            step = scaledStepBound;
+            // Move the step bound to the left so that scaledStepBound + tol(stepBound) = stepBound 
+            scaledStepBound -= (relativeTolerance * Math.abs(stepBound) + absoluteTolerance) 
+                    / (1.0 + relativeTolerance);
+        }
+
+        if (Math.abs(step) < tolerance) {
+            if (step < 0.0) {
+                resultStep = -tolerance;
+            } else {
+                resultStep = tolerance;
+            }
+        } else {
+            resultStep = step;
+        }
+    }
+
+    public GetPointCubic(double relativeTolerance, double absoluteTolerance, double tnytol, double eta, double rmu,
+            double stepBound, double initialStep, double fu, double gu) {
+        if (initialStep <= 0.0) {
+            throw new IllegalArgumentException("Initial step must be > 0");
+        }
+        if (stepBound <= tnytol || gu > 0.0) {
             throw new IllegalArgumentException("Invalid inputs to GetPointCubic");
         }
-        
-        this.reltol = reltol;
-        
-        if (xbnd < abstol) {
-            this.abstol = xbnd;
+
+        oldFunctionValue = fu;
+        this.relativeTolerance = relativeTolerance;
+        this.stepBound = stepBound;
+
+        if (stepBound < absoluteTolerance) {
+            this.absoluteTolerance = this.stepBound;
         } else {
-            this.abstol = abstol;
+            this.absoluteTolerance = absoluteTolerance;
         }
-        tol = this.abstol;
+        tolerance = this.absoluteTolerance;
 
         /* a and b define the interval of uncertainty, x and xw are points */
         /* with lowest and second lowest function values so far obtained. */
         /* initialize a,smin,xw at origin and corresponding values of */
         /* function and projection of the gradient along direction of search */
         /* at values for latest estimate at minimum. */
-        a = 0.0;
+        intervalLow = 0.0;
         xw = 0.0;
         xmin = 0.0;
-        oldf = fu;
         fmin = fu;
         fw = fu;
         gw = gu;
         gmin = gu;
-        step = u;
+        step = initialStep;
         factor = 5.0;
-
-        /* The minimum has not yet been bracketed. */
-        braktd = false;
 
         /* Set up xbnd as a bound on the step to be taken. (xbnd is not computed */
         /* explicitly but scxbnd is its scaled value.) Set the upper bound */
         /* on the interval of uncertainty initially to xbnd + tol(xbnd). */
-        scxbnd = xbnd;
-        b = scxbnd + this.reltol * Math.abs(scxbnd) + this.abstol;
-        e = b + b;
-        b1 = b;
+        scaledStepBound = this.stepBound;
+        intervalUp = scaledStepBound + (this.relativeTolerance * Math.abs(scaledStepBound)) + this.absoluteTolerance;
+        e = intervalUp + intervalUp;
+        b1 = intervalUp;
 
         /* Compute the constants required for the two convergence criteria. */
         gtest1 = -rmu * gu;
         gtest2 = -eta * gu;
 
-        /* If the step is too large, replace by the scaled bound (so as to */
-        /* compute the new point on the boundary). */
-        if (step >= scxbnd) {
-            step = scxbnd;
-            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
-            scxbnd -= (this.reltol * Math.abs(xbnd) + this.abstol) / (1.0 + this.reltol);
-        }
-        
-        if (Math.abs(step) < tol) {
-            if (step < 0.0) {
-                this.u = -tol;
+        updateStepValues();
+    }
+
+    /**
+     * Some stuff that happens before the convergence check. 
+     * FIXME: Better name.
+     */
+    private void beforeConvergenceCheck(double fu, double gu) {
+        /* Update a,b,xw, and xmin */
+        if (fu <= fmin) {
+            /* If function value not increased, new point becomes next */
+            /* origin and other points are scaled accordingly. */
+            double chordu = oldFunctionValue - (xmin + resultStep) * gtest1;
+            if (fu > chordu) {
+                /* The new function value does not satisfy the sufficient decrease */
+                /* criterion. prepare to move the upper bound to this point and */
+                /* force the interpolation scheme to either bisect the interval of */
+                /* uncertainty or take the linear interpolation step which estimates */
+                /* the root of f(alpha)=chord(alpha). */
+
+                double chordm = oldFunctionValue - xmin * gtest1;
+                gu = -gmin;
+                double denom = chordm - fmin;
+                if (Math.abs(denom) < 1e-15) {
+                    denom = 1e-15;
+                    if (chordm - fmin < 0.0) {
+                        denom = -denom;
+                    }
+                }
+                if (xmin != 0.0) {
+                    gu = gmin * (chordu - fu) / denom;
+                }
+                fu = 0.5 * resultStep * (gmin + gu) + fmin;
+                if (fu < fmin) {
+                    fu = fmin;
+                }
             } else {
-                this.u = tol;
+                fw = fmin;
+                fmin = fu;
+                gw = gmin;
+                gmin = gu;
+                xmin += resultStep;
+                intervalLow -= resultStep;
+                intervalUp -= resultStep;
+                xw = -resultStep;
+                scaledStepBound -= resultStep;
+                if (gu <= 0.0) {
+                    intervalLow = 0.0;
+                } else {
+                    intervalUp = 0.0;
+                    minIsBracketed = true;
+                }
+                tolerance = Math.abs(xmin) * relativeTolerance + absoluteTolerance;
+                return;
             }
-        } else {
-            this.u = step;
         }
+
+        /* If function value increased, origin remains unchanged */
+        /* but new point may now qualify as w. */
+        if (resultStep < 0.0) {
+            intervalLow = resultStep;
+        } else {
+            intervalUp = resultStep;
+            minIsBracketed = true;
+        }
+        xw = resultStep;
+        fw = fu;
+        gw = gu;
     }
 
     public boolean iterate(double big, double rtsmll, double tnytol,
-            double fpresn, double xbnd, double fu, double gu) {
-        ConvergenceCheck:
-        {
-            /* Update a,b,xw, and xmin */
-            if (fu <= fmin) {
-                /* If function value not increased, new point becomes next */
-                /* origin and other points are scaled accordingly. */
-                double chordu = oldf - (xmin + u) * gtest1;
-                if (fu > chordu) {
-                    /* The new function value does not satisfy the sufficient decrease */
-                    /* criterion. prepare to move the upper bound to this point and */
-                    /* force the interpolation scheme to either bisect the interval of */
-                    /* uncertainty or take the linear interpolation step which estimates */
-                    /* the root of f(alpha)=chord(alpha). */
+            double fpresn, double fu, double gu) {
+        beforeConvergenceCheck(fu, gu);
 
-                    double chordm = oldf - xmin * gtest1;
-                    gu = -gmin;
-                    double denom = chordm - fmin;
-                    if (Math.abs(denom) < 1e-15) {
-                        denom = 1e-15;
-                        if (chordm - fmin < 0.0) {
-                            denom = -denom;
-                        }
-                    }
-                    if (xmin != 0.0) {
-                        gu = gmin * (chordu - fu) / denom;
-                    }
-                    fu = 0.5 * u * (gmin + gu) + fmin;
-                    if (fu < fmin) {
-                        fu = fmin;
-                    }
-                } else {
-                    fw = fmin;
-                    fmin = fu;
-                    gw = gmin;
-                    gmin = gu;
-                    xmin += u;
-                    a -= u;
-                    b -= u;
-                    xw = -u;
-                    scxbnd -= u;
-                    if (gu <= 0.0) {
-                        a = 0.0;
-                    } else {
-                        b = 0.0;
-                        braktd = true;
-                    }
-                    tol = Math.abs(xmin) * reltol + abstol;
-                    break ConvergenceCheck;
-                }
-            }
-
-            /* If function value increased, origin remains unchanged */
-            /* but new point may now qualify as w. */
-            if (u < 0.0) {
-                a = u;
-            } else {
-                b = u;
-                braktd = true;
-            }
-            xw = u;
-            fw = fu;
-            gw = gu;
-        }
-
-        double twotol = tol + tol;
-        double xmidpt = 0.5 * (a + b);
+        /* From here is ConvergenceCheck */
+        
+        double twotol = tolerance + tolerance;
+        double xmidpt = 0.5 * (intervalLow + intervalUp);
 
         /* Check termination criteria */
-        boolean convrg = (Math.abs(xmidpt) <= twotol - 0.5 * (b - a))
-                || (Math.abs(gmin) <= gtest2 && fmin < oldf
-                && ((Math.abs(xmin - xbnd) > tol) || (!braktd)));
+        boolean convrg = (Math.abs(xmidpt) <= twotol - 0.5 * (intervalUp - intervalLow))
+                || (Math.abs(gmin) <= gtest2 && fmin < oldFunctionValue
+                && ((Math.abs(xmin - stepBound) > tolerance) || (!minIsBracketed)));
         if (convrg) {
             if (xmin != 0.0) {
                 return false;
@@ -184,15 +226,15 @@ class GetPointCubic {
              * unimodality constant, tol. If the change in f(x) is larger than
              * expected, reduce the value of tol.
              */
-            if (Math.abs(oldf - fw) <= fpresn) {
-                throw new MinimizationError("getptciter failed. |oldf - fw| <= fpresn");
+            if (Math.abs(oldFunctionValue - fw) <= fpresn) {
+                throw new MinimizationError("GetPointubic failed. |oldf - fw| <= fpresn");
             }
-            tol = 0.1 * tol;
-            if (tol < tnytol) {
-                throw new MinimizationError("getptciter failed. tol < tnytol");
+            tolerance = 0.1 * tolerance;
+            if (tolerance < tnytol) {
+                throw new MinimizationError("GetPointubic failed. tol < tnytol");
             }
-            reltol = 0.1 * reltol;
-            abstol = 0.1 * abstol;
+            relativeTolerance = 0.1 * relativeTolerance;
+            absoluteTolerance = 0.1 * absoluteTolerance;
             twotol = 0.1 * twotol;
         }
 
@@ -202,7 +244,7 @@ class GetPointCubic {
         double s = 0.0;
         MinimumFound:
         {
-            if (Math.abs(e) > tol) {
+            if (Math.abs(e) > tolerance) {
                 /* Fit cubic through xmin and xw */
                 r = 3.0 * (fmin - fw) / xw + gmin + gw;
                 double absr = Math.abs(r);
@@ -269,38 +311,38 @@ class GetPointCubic {
                     q = -q;
                 }
                 r = e;
-                if (b1 != step || braktd) {
+                if (b1 != step || minIsBracketed) {
                     e = step;
                 }
             }
         }
 
         /* Construct an artificial bound on the estimated steplength */
-        double a1 = a;
-        b1 = b;
+        double a1 = intervalLow;
+        b1 = intervalUp;
         step = xmidpt;
-        if ((!braktd) || ((a == 0.0 && xw < 0.0) || (b == 0.0 && xw > 0.0))) {
-            if (braktd) {
+        if ((!minIsBracketed) || ((intervalLow == 0.0 && xw < 0.0) || (intervalUp == 0.0 && xw > 0.0))) {
+            if (minIsBracketed) {
                 /* If the minimum is not bracketed by 0 and xw the step must lie
                  within (a1,b1). */
                 double d1 = xw;
-                double d2 = a;
-                if (a == 0.0) {
-                    d2 = b;
+                double d2 = intervalLow;
+                if (intervalLow == 0.0) {
+                    d2 = intervalUp;
                 }
                 /* This line might be : */
                 /* if (*a == 0.0) d2 = *e */
-                u = -d1 / d2;
-                step = 5.0 * d2 * (0.1 + 1.0 / u) / 11.0;
-                if (u < 1.0) {
-                    step = 0.5 * d2 * Math.sqrt(u);
+                resultStep = -d1 / d2;
+                step = 5.0 * d2 * (0.1 + 1.0 / resultStep) / 11.0;
+                if (resultStep < 1.0) {
+                    step = 0.5 * d2 * Math.sqrt(resultStep);
                 }
             } else {
                 step = -factor * xw;
-                if (step > scxbnd) {
-                    step = scxbnd;
+                if (step > scaledStepBound) {
+                    step = scaledStepBound;
                 }
-                if (step != scxbnd) {
+                if (step != scaledStepBound) {
                     factor = 5.0 * factor;
                 }
             }
@@ -319,49 +361,36 @@ class GetPointCubic {
          * during the last-but-one iteration.
          */
         if (Math.abs(s) <= Math.abs(0.5 * q * r) || s <= q * a1 || s >= q * b1) {
-            e = b - a;
+            e = intervalUp - intervalLow;
         } else {
             /* A cubic interpolation step */
             step = s / q;
 
             /* The function must not be evaluated too close to a or b. */
-            if (step - a < twotol || b - step < twotol) {
+            if (step - intervalLow < twotol || intervalUp - step < twotol) {
                 if (xmidpt <= 0.0) {
-                    step = -tol;
+                    step = -tolerance;
                 } else {
-                    step = tol;
+                    step = tolerance;
                 }
             }
         }
 
-        /* If the step is too large, replace by the scaled bound (so as to */
-        /* compute the new point on the boundary). */
-        if (step >= scxbnd) {
-            step = scxbnd;
-            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
-            scxbnd -= (reltol * Math.abs(xbnd) + abstol) / (1.0 + reltol);
-        }
-        u = step;
-        if (Math.abs(step) < tol && step < 0.0) {
-            u = -tol;
-        }
-        if (Math.abs(step) < tol && step >= 0.0) {
-            u = tol;
-        }
-        
+        updateStepValues();
+
         return true;
     }
-    
+
     public double xmin() {
         return xmin;
     }
-    
+
     public double fmin() {
         return fmin;
     }
-    
-    public double u() {
-        return u;
+
+    public double resultStep() {
+        return resultStep;
     }
-    
+
 }

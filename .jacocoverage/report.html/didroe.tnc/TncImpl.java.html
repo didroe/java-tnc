@@ -202,8 +202,8 @@ import org.slf4j.LoggerFactory;
     /**
      * Unscale x
      */
-    public void unscalex(int n, double[] x, double[] xscale, double xoffset[]) {
-<span class="fc bfc" id="L206" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+    public void unscalex(double[] x, double[] xscale, double xoffset[]) {
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
 <span class="fc" id="L207">            x[i] = x[i] * xscale[i] + xoffset[i];</span>
         }
 <span class="fc" id="L209">    }</span>
@@ -211,8 +211,8 @@ import org.slf4j.LoggerFactory;
     /**
      * Scale x
      */
-    public void scalex(int n, double[] x, double[] xscale, double[] xoffset) {
-<span class="fc bfc" id="L215" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+    public void scalex(double[] x, double[] xscale, double[] xoffset) {
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
 <span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (xscale[i] &gt; 0.0) {</span>
 <span class="fc" id="L217">                x[i] = (x[i] - xoffset[i]) / xscale[i];</span>
             }
@@ -222,8 +222,8 @@ import org.slf4j.LoggerFactory;
     /**
      * Scale g
      */
-    public void scaleg(int n, double[] g, double[] xscale, double fscale) {
-<span class="fc bfc" id="L226" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+    public void scaleg(double[] g, double[] xscale, double fscale) {
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        for (int i = 0; i &lt; g.length; i++) {</span>
 <span class="fc" id="L227">            g[i] *= xscale[i] * fscale;</span>
         }
 <span class="fc" id="L229">    }</span>
@@ -300,14 +300,14 @@ import org.slf4j.LoggerFactory;
 <span class="fc" id="L300">        ref.f = functionEvaluator.evaluate(x, gfull);</span>
 
         /* Initial scaling */
-<span class="fc" id="L303">        scalex(n, x, xscale, xoffset);</span>
+<span class="fc" id="L303">        scalex(x, xscale, xoffset);</span>
 <span class="fc" id="L304">        ref.f *= fscale;</span>
 
         /* initial pivot calculation */
 <span class="fc" id="L307">        setConstraints(n, x, pivot, xscale, xoffset, low, up);</span>
 
 <span class="fc" id="L309">        ArrayMath.copy(gfull, g);</span>
-<span class="fc" id="L310">        scaleg(n, g, xscale, fscale);</span>
+<span class="fc" id="L310">        scaleg(g, xscale, fscale);</span>
 
         /* Test the lagrange multipliers to see if they are non-negative. */
 <span class="fc bfc" id="L313" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
@@ -316,7 +316,7 @@ import org.slf4j.LoggerFactory;
             }
         }
 
-<span class="fc" id="L319">        project(n, g, pivot);</span>
+<span class="fc" id="L319">        project(g, pivot);</span>
 
         /* Set initial values to other parameters */
 <span class="fc" id="L322">        double gnorm = ArrayMath.euclidianNorm(g);</span>
@@ -343,7 +343,7 @@ import org.slf4j.LoggerFactory;
 <span class="fc bfc" id="L343" title="All 2 branches covered.">            if (ArrayMath.euclidianNorm(g) &lt;= pgtol * fscale) {</span>
                 /* |PG| == 0.0 =&gt; local minimum */
 <span class="fc" id="L345">                ArrayMath.copy(gfull, g);</span>
-<span class="fc" id="L346">                project(n, g, pivot);</span>
+<span class="fc" id="L346">                project(g, pivot);</span>
 <span class="pc bpc" id="L347" title="1 of 2 branches missed.">                if (logger.isDebugEnabled()) {</span>
 <span class="fc" id="L348">                    logger.debug(&quot;|pg| = {} -&gt; local minimum&quot;, ArrayMath.euclidianNorm(g) / fscale);</span>
                 }
@@ -378,7 +378,7 @@ import org.slf4j.LoggerFactory;
             }
 
 <span class="fc" id="L380">            ArrayMath.copy(x, temp);</span>
-<span class="fc" id="L381">            project(n, temp, pivot);</span>
+<span class="fc" id="L381">            project(temp, pivot);</span>
 <span class="fc" id="L382">            double xnorm = ArrayMath.euclidianNorm(temp);</span>
 <span class="fc" id="L383">            int oldnfeval = functionEvaluator.getNumEvaluations();</span>
 
@@ -434,7 +434,7 @@ import org.slf4j.LoggerFactory;
 <span class="fc" id="L434">                alpha = initialStep(ref.f, fmin / fscale, oldgtp, spe);</span>
 
                 /* Perform the linear search */
-<span class="fc" id="L437">                LinearSearchResult lsResult = linearSearch(n, low, up, xscale, xoffset, fscale, pivot,</span>
+<span class="fc" id="L437">                LinearSearchResult lsResult = linearSearch(low, up, xscale, xoffset, fscale, pivot,</span>
                         eta, ftol, spe, pk, x, ref.f, alpha, gfull);
 <span class="fc" id="L439">                alpha = lsResult.alpha();</span>
 <span class="fc" id="L440">                ref.f = lsResult.f();</span>
@@ -473,9 +473,9 @@ import org.slf4j.LoggerFactory;
 
             /* Invoke the callback function */
 <span class="pc bpc" id="L475" title="1 of 2 branches missed.">            if (callback != null) {</span>
-<span class="nc" id="L476">                unscalex(n, x, xscale, xoffset);</span>
+<span class="nc" id="L476">                unscalex(x, xscale, xoffset);</span>
 <span class="nc" id="L477">                callback.tnc_callback(x);</span>
-<span class="nc" id="L478">                scalex(n, x, xscale, xoffset);</span>
+<span class="nc" id="L478">                scalex(x, xscale, xoffset);</span>
             }
 
             /* Set up parameters used in convergence and resetting tests */
@@ -494,10 +494,10 @@ import org.slf4j.LoggerFactory;
             }
 
 <span class="fc" id="L496">            ArrayMath.copy(gfull, g);</span>
-<span class="fc" id="L497">            scaleg(n, g, xscale, fscale);</span>
+<span class="fc" id="L497">            scaleg(g, xscale, fscale);</span>
 
 <span class="fc" id="L499">            ArrayMath.copy(g, temp);</span>
-<span class="fc" id="L500">            project(n, temp, pivot);</span>
+<span class="fc" id="L500">            project(temp, pivot);</span>
 <span class="fc" id="L501">            gnorm = ArrayMath.euclidianNorm(temp);</span>
 
             /* Reset pivot */
@@ -508,7 +508,7 @@ import org.slf4j.LoggerFactory;
 <span class="pc bpc" id="L508" title="1 of 2 branches missed.">            if (remcon) {</span>
                 /* Recalculate gnorm and reset fLastConstraint */
 <span class="nc" id="L510">                ArrayMath.copy(g, temp);</span>
-<span class="nc" id="L511">                project(n, temp, pivot);</span>
+<span class="nc" id="L511">                project(temp, pivot);</span>
 <span class="nc" id="L512">                gnorm = ArrayMath.euclidianNorm(temp);</span>
 <span class="nc" id="L513">                fLastConstraint = ref.f;</span>
             }
@@ -532,7 +532,7 @@ import org.slf4j.LoggerFactory;
                 }
             }
 
-<span class="fc" id="L535">            project(n, g, pivot);</span>
+<span class="fc" id="L535">            project(g, pivot);</span>
 
 <span class="pc bpc" id="L537" title="1 of 2 branches missed.">            if (logger.isTraceEnabled()) {</span>
 <span class="fc" id="L538">                printCurrentIteration(n, ref.f / fscale, gfull,</span>
@@ -570,7 +570,7 @@ import org.slf4j.LoggerFactory;
         }
 
         /* Unscaling */
-<span class="fc" id="L573">        unscalex(n, x, xscale, xoffset);</span>
+<span class="fc" id="L573">        unscalex(x, xscale, xoffset);</span>
 <span class="fc" id="L574">        ArrayMath.clip(x, low, up);</span>
 <span class="fc" id="L575">        ref.f /= fscale;</span>
 
@@ -595,8 +595,8 @@ import org.slf4j.LoggerFactory;
     /**
      * Set x[i] = 0.0 if direction i is currently constrained
      */
-    public void project(int n, double[] x, int[] pivot) {
-<span class="fc bfc" id="L599" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+    public void project(double[] x, int[] pivot) {
+<span class="fc bfc" id="L599" title="All 2 branches covered.">        for (int i = 0; i &lt; x.length; i++) {</span>
 <span class="fc bfc" id="L600" title="All 2 branches covered.">            if (pivot[i] != 0) {</span>
 <span class="fc" id="L601">                x[i] = 0.0;</span>
             }
@@ -731,7 +731,7 @@ import org.slf4j.LoggerFactory;
 <span class="pc bpc" id="L731" title="1 of 2 branches missed.">        if (maxCGit == 0) {</span>
 <span class="nc" id="L732">            ArrayMath.copy(g, ref.zsol);</span>
 <span class="nc" id="L733">            ArrayMath.negate(ref.zsol);</span>
-<span class="nc" id="L734">            project(n, ref.zsol, ref.pivot);</span>
+<span class="nc" id="L734">            project(ref.zsol, ref.pivot);</span>
 <span class="nc" id="L735">            return;</span>
         }
 
@@ -763,10 +763,10 @@ import org.slf4j.LoggerFactory;
         /* Main iteration */
 <span class="fc bfc" id="L764" title="All 2 branches covered.">        for (int k = 0; k &lt; maxCGit; k++) {</span>
             /* CG iteration to solve system of equations */
-<span class="fc" id="L766">            project(n, r, ref.pivot);</span>
+<span class="fc" id="L766">            project(r, ref.pivot);</span>
 <span class="fc" id="L767">            msolve(r, zk, n, ref.sk, ref.yk, ref.diagb, ref.sr, ref.yr, upd1, yksk, yrsr,</span>
                     lreset);
-<span class="fc" id="L769">            project(n, zk, ref.pivot);</span>
+<span class="fc" id="L769">            project(zk, ref.pivot);</span>
 <span class="fc" id="L770">            double rz = ArrayMath.dotProduct(r, zk);</span>
 
 <span class="pc bpc" id="L772" title="1 of 2 branches missed.">            if (rz / rhsnrm &lt; tol) {</span>
@@ -774,7 +774,7 @@ import org.slf4j.LoggerFactory;
 <span class="nc bnc" id="L774" title="All 2 branches missed.">                if (k == 0) {</span>
 <span class="nc" id="L775">                    ArrayMath.copy(g, ref.zsol);</span>
 <span class="nc" id="L776">                    ArrayMath.negate(ref.zsol);</span>
-<span class="nc" id="L777">                    project(n, ref.zsol, ref.pivot);</span>
+<span class="nc" id="L777">                    project(ref.zsol, ref.pivot);</span>
                 }
                 break;
             }
@@ -789,10 +789,10 @@ import org.slf4j.LoggerFactory;
 <span class="fc" id="L789">                v[i] = zk[i] + beta * v[i];</span>
             }
 
-<span class="fc" id="L792">            project(n, v, ref.pivot);</span>
+<span class="fc" id="L792">            project(v, ref.pivot);</span>
 <span class="fc" id="L793">            hessianTimesVector(v, gv, n, ref.x, g, xscale, xoffset, fscale,</span>
                     accuracy, xnorm, low, up);
-<span class="fc" id="L795">            project(n, gv, ref.pivot);</span>
+<span class="fc" id="L795">            project(gv, ref.pivot);</span>
 
 <span class="fc" id="L797">            double vgv = ArrayMath.dotProduct(v, gv);</span>
 <span class="fc bfc" id="L798" title="All 2 branches covered.">            if (vgv / rhsnrm &lt; tol) {</span>
@@ -801,7 +801,7 @@ import org.slf4j.LoggerFactory;
 <span class="fc" id="L801">                    msolve(g, ref.zsol, n, ref.sk, ref.yk, ref.diagb, ref.sr, ref.yr, upd1, yksk,</span>
                             yrsr, lreset);
 <span class="fc" id="L803">                    ArrayMath.negate(ref.zsol);</span>
-<span class="fc" id="L804">                    project(n, ref.zsol, ref.pivot);</span>
+<span class="fc" id="L804">                    project(ref.zsol, ref.pivot);</span>
                 }
                 break;
             }
@@ -886,11 +886,11 @@ import org.slf4j.LoggerFactory;
 <span class="fc" id="L886">            xv[i] = x[i] + delta * v[i];</span>
         }
 
-<span class="fc" id="L889">        unscalex(n, xv, xscale, xoffset);</span>
+<span class="fc" id="L889">        unscalex(xv, xscale, xoffset);</span>
 <span class="fc" id="L890">        ArrayMath.clip(xv, low, up);</span>
 <span class="fc" id="L891">        functionEvaluator.evaluate(xv, gv);</span>
 
-<span class="fc" id="L893">        scaleg(n, gv, xscale, fscale);</span>
+<span class="fc" id="L893">        scaleg(gv, xscale, fscale);</span>
 
 <span class="fc" id="L895">        double dinv = 1.0 / delta;</span>
 <span class="fc bfc" id="L896" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
@@ -1066,22 +1066,22 @@ import org.slf4j.LoggerFactory;
     /**
      * Line search algorithm of gill and murray
      */
-    public LinearSearchResult linearSearch(int n, double[] low,
+    public LinearSearchResult linearSearch(double[] low,
             double[] up, double[] xscale, double[] xoffset, double fscale,
-            int[] pivot, double eta, double ftol, double xbnd, double[] p,
+            int[] pivot, double eta, double ftol, double xBound, double[] p,
             double[] x, double f, double alpha, double gfull[]) {
 <span class="fc" id="L1073">        final int MAX_ITERATIONS = 64;</span>
 <span class="nc" id="L1074"></span>
-<span class="fc" id="L1075">        double[] temp = new double[n];</span>
-<span class="pc" id="L1076">        double[] tempgfull = new double[n];</span>
-<span class="fc" id="L1077">        double[] newgfull = new double[n];</span>
+<span class="fc" id="L1075">        double[] temp = new double[x.length];</span>
+<span class="pc" id="L1076">        double[] tempgfull = new double[x.length];</span>
+<span class="fc" id="L1077">        double[] newgfull = new double[x.length];</span>
 
 <span class="pc" id="L1079">        ArrayMath.copy(gfull, temp);</span>
-<span class="fc" id="L1080">        scaleg(n, temp, xscale, fscale);</span>
+<span class="fc" id="L1080">        scaleg(temp, xscale, fscale);</span>
 <span class="fc" id="L1081">        double initGu = ArrayMath.dotProduct(temp, p);</span>
 
 <span class="fc" id="L1083">        ArrayMath.copy(x, temp);</span>
-<span class="fc" id="L1084">        project(n, temp, pivot);</span>
+<span class="fc" id="L1084">        project(temp, pivot);</span>
 <span class="pc" id="L1085">        double xnorm = ArrayMath.euclidianNorm(temp);</span>
 
 <span class="nc" id="L1087">        // Absolute and relative tolerances for the linear search</span>
@@ -1100,7 +1100,7 @@ import org.slf4j.LoggerFactory;
 <span class="nc" id="L1100">        // Estimated relative precision in f(x)</span>
 <span class="pc" id="L1101">        double fpresn = ftol;</span>
 
-<span class="fc" id="L1103">        GetPointCubic getPointCubic = new GetPointCubic(reltol, abstol, tnytol, eta, 1e-4, xbnd, alpha, f, initGu);</span>
+<span class="fc" id="L1103">        GetPointCubic getPointCubic = new GetPointCubic(reltol, abstol, tnytol, eta, 1e-4, xBound, alpha, f, initGu);</span>
 <span class="nc" id="L1104"></span>
 <span class="pc" id="L1105">        boolean requiresFurtherEvaluation = true;</span>
 <span class="pc bfc" id="L1106" title="All 2 branches covered.">        while (requiresFurtherEvaluation) {</span>
@@ -1110,20 +1110,20 @@ import org.slf4j.LoggerFactory;
 <span class="fc" id="L1110">            itcnt++;</span>
 <span class="nc" id="L1111"></span>
 <span class="fc" id="L1112">            double ualpha = getPointCubic.xmin() + getPointCubic.u();</span>
-<span class="fc bfc" id="L1113" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L1113" title="All 2 branches covered.">            for (int i = 0; i &lt; x.length; i++) {</span>
 <span class="pc" id="L1114">                temp[i] = x[i] + ualpha * p[i];</span>
             }
 <span class="nc" id="L1116"></span>
 <span class="nc" id="L1117">            // Function evaluation</span>
-<span class="fc" id="L1118">            unscalex(n, temp, xscale, xoffset);</span>
+<span class="fc" id="L1118">            unscalex(temp, xscale, xoffset);</span>
 <span class="fc" id="L1119">            ArrayMath.clip(temp, low, up);</span>
 <span class="pc" id="L1120">            double fu = functionEvaluator.evaluate(temp, tempgfull) * fscale;</span>
 <span class="nc" id="L1121"></span>
 <span class="fc" id="L1122">            ArrayMath.copy(tempgfull, temp);</span>
-<span class="pc" id="L1123">            scaleg(n, temp, xscale, fscale);</span>
+<span class="pc" id="L1123">            scaleg(temp, xscale, fscale);</span>
 <span class="pc" id="L1124">            double gu = ArrayMath.dotProduct(temp, p);</span>
 <span class="nc" id="L1125"></span>
-<span class="fc" id="L1126">            requiresFurtherEvaluation = getPointCubic.iterate(big, rtsmll, tnytol, fpresn, xbnd, fu, gu);</span>
+<span class="fc" id="L1126">            requiresFurtherEvaluation = getPointCubic.iterate(big, rtsmll, tnytol, fpresn, fu, gu);</span>
 <span class="nc" id="L1127"></span>
 <span class="nc" id="L1128">            // New best point</span>
 <span class="pc bfc" id="L1129" title="All 2 branches covered.">            if (getPointCubic.xmin() == ualpha) {</span>
