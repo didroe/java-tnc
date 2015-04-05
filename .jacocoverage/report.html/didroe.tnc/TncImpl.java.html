@@ -51,7 +51,7 @@ import org.slf4j.LoggerFactory;
 
 <span class="fc" id="L52">    public static final double DBL_EPSILON = Math.ulp(1.0);</span>
 
-    public FunctionEvaluator functionEvaluator;
+    FunctionEvaluator functionEvaluator;
 
     /*
      * tnc : minimize a function with variables subject to bounds, using
@@ -434,13 +434,13 @@ import org.slf4j.LoggerFactory;
 <span class="fc" id="L434">                alpha = initialStep(ref.f, fmin / fscale, oldgtp, spe);</span>
 
                 /* Perform the linear search */
-<span class="fc" id="L437">                linearSearchRef tmpLinSRef = new linearSearchRef();</span>
-<span class="fc" id="L438">                tmpLinSRef.alpha = alpha;</span>
-<span class="fc" id="L439">                tmpLinSRef.f = ref.f;</span>
-<span class="fc" id="L440">                linearSearch(n, low, up, xscale, xoffset, fscale, pivot,</span>
-                        eta, ftol, spe, pk, x, gfull, maxnfeval, tmpLinSRef);
-<span class="fc" id="L442">                alpha = tmpLinSRef.alpha;</span>
-<span class="fc" id="L443">                ref.f = tmpLinSRef.f;</span>
+<span class="fc" id="L437">                LinearSearchResult lsResult = linearSearch(n, low, up, xscale, xoffset, fscale, pivot,</span>
+                        eta, ftol, spe, pk, x, ref.f, alpha, gfull);
+<span class="fc" id="L439">                alpha = lsResult.alpha();</span>
+<span class="fc" id="L440">                ref.f = lsResult.f();</span>
+<span class="fc" id="L441">                ArrayMath.copy(lsResult.g(), gfull);</span>
+<span class="fc" id="L442">                ArrayMath.copy(lsResult.x(), x);</span>
+
 
                 /* If we went up to the maximum unconstrained step, increase it */
 <span class="pc bpc" id="L446" title="1 of 2 branches missed.">                if (alpha &gt;= 0.9 * ustpmax) {</span>
@@ -1032,541 +1032,109 @@ import org.slf4j.LoggerFactory;
         }
 <span class="fc" id="L1033">    }</span>
 
-<span class="fc" id="L1035">    public class linearSearchRef {</span>
+<span class="pc" id="L1035">    class LinearSearchResult {</span>
+        private final double alpha;
+        private final double[] x;
+        private final double f;
+        private final double[] g;
+        
+<span class="fc" id="L1041">        public LinearSearchResult(double alpha, double[] x, double f, double[] g) {</span>
+<span class="fc" id="L1042">            this.alpha = alpha;</span>
+<span class="fc" id="L1043">            this.x = x;</span>
+<span class="fc" id="L1044">            this.f = f;</span>
+<span class="fc" id="L1045">            this.g = g;</span>
+<span class="fc" id="L1046">        }</span>
+        
+        public double alpha() {
+<span class="fc" id="L1049">            return alpha;</span>
+        }
+        
+        public double[] x() {
+<span class="fc" id="L1053">            return x;</span>
+        }
+        
+        public double f() {
+<span class="fc" id="L1057">            return f;</span>
+        }
 
-        public double f;
-        public double alpha;
+        public double[] g() {
+<span class="fc" id="L1061">            return g;</span>
+        }
     }
 
+    
     /**
      * Line search algorithm of gill and murray
      */
-    public void linearSearch(int n, double[] low,
+    public LinearSearchResult linearSearch(int n, double[] low,
             double[] up, double[] xscale, double[] xoffset, double fscale,
             int[] pivot, double eta, double ftol, double xbnd, double[] p,
-            double[] x, double gfull[], int maxnfeval, linearSearchRef ref) {
-<span class="fc" id="L1048">        int maxlsit = 64;</span>
+            double[] x, double f, double alpha, double gfull[]) {
+<span class="fc" id="L1073">        final int MAX_ITERATIONS = 64;</span>
+<span class="nc" id="L1074"></span>
+<span class="fc" id="L1075">        double[] temp = new double[n];</span>
+<span class="pc" id="L1076">        double[] tempgfull = new double[n];</span>
+<span class="fc" id="L1077">        double[] newgfull = new double[n];</span>
 
-<span class="fc" id="L1050">        double[] temp = new double[n];</span>
-<span class="fc" id="L1051">        double[] tempgfull = new double[n];</span>
-<span class="fc" id="L1052">        double[] newgfull = new double[n];</span>
+<span class="pc" id="L1079">        ArrayMath.copy(gfull, temp);</span>
+<span class="fc" id="L1080">        scaleg(n, temp, xscale, fscale);</span>
+<span class="fc" id="L1081">        double initGu = ArrayMath.dotProduct(temp, p);</span>
 
-<span class="fc" id="L1054">        ArrayMath.copy(gfull, temp);</span>
-<span class="fc" id="L1055">        scaleg(n, temp, xscale, fscale);</span>
-<span class="fc" id="L1056">        double gu = ArrayMath.dotProduct(temp, p);</span>
+<span class="fc" id="L1083">        ArrayMath.copy(x, temp);</span>
+<span class="fc" id="L1084">        project(n, temp, pivot);</span>
+<span class="pc" id="L1085">        double xnorm = ArrayMath.euclidianNorm(temp);</span>
 
-<span class="fc" id="L1058">        ArrayMath.copy(x, temp);</span>
-<span class="fc" id="L1059">        project(n, temp, pivot);</span>
-<span class="fc" id="L1060">        double xnorm = ArrayMath.euclidianNorm(temp);</span>
+<span class="nc" id="L1087">        // Absolute and relative tolerances for the linear search</span>
+<span class="fc" id="L1088">        double rteps = Math.sqrt(DBL_EPSILON);</span>
+<span class="fc" id="L1089">        double pe = ArrayMath.euclidianNorm(p) + DBL_EPSILON;</span>
+<span class="fc" id="L1090">        double reltol = rteps * (xnorm + 1.0) / pe;</span>
+<span class="fc" id="L1091">        double abstol = -DBL_EPSILON * (1.0 + Math.abs(f)) / (initGu - DBL_EPSILON);</span>
+<span class="nc" id="L1092"></span>
+<span class="nc" id="L1093">        // Smallest allowable spacing between points in the linear search</span>
+<span class="fc" id="L1094">        double tnytol = DBL_EPSILON * (xnorm + 1.0) / pe;</span>
+<span class="nc" id="L1095"></span>
+<span class="pc" id="L1096">        double rtsmll = DBL_EPSILON;</span>
+<span class="pc" id="L1097">        double big = 1.0 / (DBL_EPSILON * DBL_EPSILON);</span>
+<span class="fc" id="L1098">        int itcnt = 0;</span>
+<span class="nc" id="L1099"></span>
+<span class="nc" id="L1100">        // Estimated relative precision in f(x)</span>
+<span class="pc" id="L1101">        double fpresn = ftol;</span>
 
-        /* Compute the absolute and relative tolerances for the linear search */
-<span class="fc" id="L1063">        double rteps = Math.sqrt(DBL_EPSILON);</span>
-<span class="fc" id="L1064">        double pe = ArrayMath.euclidianNorm(p) + DBL_EPSILON;</span>
-<span class="fc" id="L1065">        double reltol = rteps * (xnorm + 1.0) / pe;</span>
-<span class="fc" id="L1066">        double abstol = -DBL_EPSILON * (1.0 + Math.abs(ref.f)) / (gu - DBL_EPSILON);</span>
-
-        /* Compute the smallest allowable spacing between points in the linear
-         search */
-<span class="fc" id="L1070">        double tnytol = DBL_EPSILON * (xnorm + 1.0) / pe;</span>
-
-<span class="fc" id="L1072">        double rtsmll = DBL_EPSILON;</span>
-<span class="fc" id="L1073">        double big = 1.0 / (DBL_EPSILON * DBL_EPSILON);</span>
-<span class="fc" id="L1074">        int itcnt = 0;</span>
-
-        /* Set the estimated relative precision in f(x). */
-<span class="fc" id="L1077">        double fpresn = ftol;</span>
-
-<span class="fc" id="L1079">        double u = ref.alpha;</span>
-<span class="fc" id="L1080">        double fu = ref.f;</span>
-<span class="fc" id="L1081">        double fmin = ref.f;</span>
-<span class="fc" id="L1082">        double rmu = 1e-4;</span>
-
-        /* Setup */
-<span class="fc" id="L1085">        getptcInitRef tmpPInitRef = new getptcInitRef();</span>
-<span class="fc" id="L1086">        tmpPInitRef.abstol = abstol;</span>
-<span class="fc" id="L1087">        tmpPInitRef.fmin = fmin;</span>
-<span class="fc" id="L1088">        tmpPInitRef.fu = fu;</span>
-<span class="fc" id="L1089">        tmpPInitRef.gu = gu;</span>
-<span class="fc" id="L1090">        tmpPInitRef.reltol = reltol;</span>
-<span class="fc" id="L1091">        tmpPInitRef.u = u;</span>
-<span class="fc" id="L1092">        tmpPInitRef.xmin = ref.alpha;</span>
-<span class="fc" id="L1093">        getptcInit(tnytol, eta, rmu, xbnd, tmpPInitRef);</span>
-<span class="fc" id="L1094">        double a = tmpPInitRef.a;</span>
-<span class="fc" id="L1095">        abstol = tmpPInitRef.abstol;</span>
-<span class="fc" id="L1096">        double b = tmpPInitRef.b;</span>
-<span class="fc" id="L1097">        double b1 = tmpPInitRef.b1;</span>
-<span class="fc" id="L1098">        boolean braktd = tmpPInitRef.braktd;</span>
-<span class="fc" id="L1099">        double e = tmpPInitRef.e;</span>
-<span class="fc" id="L1100">        double factor = tmpPInitRef.factor;</span>
-<span class="fc" id="L1101">        fmin = tmpPInitRef.fmin;</span>
-<span class="fc" id="L1102">        fu = tmpPInitRef.fu;</span>
-<span class="fc" id="L1103">        double fw = tmpPInitRef.fw;</span>
-<span class="fc" id="L1104">        double gmin = tmpPInitRef.gmin;</span>
-<span class="fc" id="L1105">        double gtest1 = tmpPInitRef.gtest1;</span>
-<span class="fc" id="L1106">        double gtest2 = tmpPInitRef.gtest2;</span>
-<span class="fc" id="L1107">        gu = tmpPInitRef.gu;</span>
-<span class="fc" id="L1108">        double gw = tmpPInitRef.gw;</span>
-<span class="fc" id="L1109">        double oldf = tmpPInitRef.oldf;</span>
-<span class="fc" id="L1110">        reltol = tmpPInitRef.reltol;</span>
-<span class="fc" id="L1111">        double scxbnd = tmpPInitRef.scxbnd;</span>
-<span class="fc" id="L1112">        double step = tmpPInitRef.step;</span>
-<span class="fc" id="L1113">        double tol = tmpPInitRef.tol;</span>
-<span class="fc" id="L1114">        u = tmpPInitRef.u;</span>
-<span class="fc" id="L1115">        ref.alpha = tmpPInitRef.xmin;</span>
-<span class="fc" id="L1116">        double xw = tmpPInitRef.xw;</span>
-
-<span class="fc" id="L1118">        boolean requiresFurtherEvaluation = true;</span>
-        /* If itest == GETPTC_EVAL, the algorithm requires the function value to be
-         calculated */
-<span class="fc bfc" id="L1121" title="All 2 branches covered.">        while (requiresFurtherEvaluation) {</span>
-<span class="pc bpc" id="L1122" title="1 of 2 branches missed.">            if (++itcnt &gt; maxlsit) {</span>
-<span class="nc" id="L1123">                throw new MinimizationError(&quot;Linear search failed. Max iterations reached&quot;);</span>
+<span class="fc" id="L1103">        GetPointCubic getPointCubic = new GetPointCubic(reltol, abstol, tnytol, eta, 1e-4, xbnd, alpha, f, initGu);</span>
+<span class="nc" id="L1104"></span>
+<span class="pc" id="L1105">        boolean requiresFurtherEvaluation = true;</span>
+<span class="pc bfc" id="L1106" title="All 2 branches covered.">        while (requiresFurtherEvaluation) {</span>
+<span class="pc bpc" id="L1107" title="1 of 2 branches missed.">            if (itcnt == MAX_ITERATIONS) {</span>
+<span class="nc" id="L1108">                throw new MinimizationError(&quot;Linear search failed. Max iterations reached&quot;);</span>
             }
-
-<span class="fc" id="L1126">            double ualpha = ref.alpha + u;</span>
-<span class="fc bfc" id="L1127" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
-<span class="fc" id="L1128">                temp[i] = x[i] + ualpha * p[i];</span>
+<span class="fc" id="L1110">            itcnt++;</span>
+<span class="nc" id="L1111"></span>
+<span class="fc" id="L1112">            double ualpha = getPointCubic.xmin() + getPointCubic.u();</span>
+<span class="fc bfc" id="L1113" title="All 2 branches covered.">            for (int i = 0; i &lt; n; i++) {</span>
+<span class="pc" id="L1114">                temp[i] = x[i] + ualpha * p[i];</span>
             }
-
-            /* Function evaluation */
-<span class="fc" id="L1132">            unscalex(n, temp, xscale, xoffset);</span>
-<span class="fc" id="L1133">            ArrayMath.clip(temp, low, up);</span>
-
-<span class="fc" id="L1135">            fu = functionEvaluator.evaluate(temp, tempgfull) * fscale;</span>
-
-<span class="fc" id="L1137">            ArrayMath.copy(tempgfull, temp);</span>
-<span class="fc" id="L1138">            scaleg(n, temp, xscale, fscale);</span>
-<span class="fc" id="L1139">            gu = ArrayMath.dotProduct(temp, p);</span>
-
-<span class="fc" id="L1141">            getptcIterRef tmpPIterRef = new getptcIterRef();</span>
-<span class="fc" id="L1142">            tmpPIterRef.a = a;</span>
-<span class="fc" id="L1143">            tmpPIterRef.abstol = abstol;</span>
-<span class="fc" id="L1144">            tmpPIterRef.b = b;</span>
-<span class="fc" id="L1145">            tmpPIterRef.b1 = b1;</span>
-<span class="fc" id="L1146">            tmpPIterRef.braktd = braktd;</span>
-<span class="fc" id="L1147">            tmpPIterRef.e = e;</span>
-<span class="fc" id="L1148">            tmpPIterRef.factor = factor;</span>
-<span class="fc" id="L1149">            tmpPIterRef.fmin = fmin;</span>
-<span class="fc" id="L1150">            tmpPIterRef.fu = fu;</span>
-<span class="fc" id="L1151">            tmpPIterRef.fw = fw;</span>
-<span class="fc" id="L1152">            tmpPIterRef.gmin = gmin;</span>
-<span class="fc" id="L1153">            tmpPIterRef.gtest1 = gtest1;</span>
-<span class="fc" id="L1154">            tmpPIterRef.gtest2 = gtest2;</span>
-<span class="fc" id="L1155">            tmpPIterRef.gu = gu;</span>
-<span class="fc" id="L1156">            tmpPIterRef.gw = gw;</span>
-<span class="fc" id="L1157">            tmpPIterRef.oldf = oldf;</span>
-<span class="fc" id="L1158">            tmpPIterRef.reltol = reltol;</span>
-<span class="fc" id="L1159">            tmpPIterRef.scxbnd = scxbnd;</span>
-<span class="fc" id="L1160">            tmpPIterRef.step = step;</span>
-<span class="fc" id="L1161">            tmpPIterRef.tol = tol;</span>
-<span class="fc" id="L1162">            tmpPIterRef.u = u;</span>
-<span class="fc" id="L1163">            tmpPIterRef.xmin = ref.alpha;</span>
-<span class="fc" id="L1164">            tmpPIterRef.xw = xw;</span>
-<span class="fc" id="L1165">            requiresFurtherEvaluation = getptcIter(big, rtsmll, tnytol, fpresn, xbnd, tmpPIterRef);</span>
-<span class="fc" id="L1166">            a = tmpPIterRef.a;</span>
-<span class="fc" id="L1167">            abstol = tmpPIterRef.abstol;</span>
-<span class="fc" id="L1168">            b = tmpPIterRef.b;</span>
-<span class="fc" id="L1169">            b1 = tmpPIterRef.b1;</span>
-<span class="fc" id="L1170">            braktd = tmpPIterRef.braktd;</span>
-<span class="fc" id="L1171">            e = tmpPIterRef.e;</span>
-<span class="fc" id="L1172">            factor = tmpPIterRef.factor;</span>
-<span class="fc" id="L1173">            fmin = tmpPIterRef.fmin;</span>
-<span class="fc" id="L1174">            fu = tmpPIterRef.fu;</span>
-<span class="fc" id="L1175">            fw = tmpPIterRef.fw;</span>
-<span class="fc" id="L1176">            gmin = tmpPIterRef.gmin;</span>
-<span class="fc" id="L1177">            gtest1 = tmpPIterRef.gtest1;</span>
-<span class="fc" id="L1178">            gtest2 = tmpPIterRef.gtest2;</span>
-<span class="fc" id="L1179">            gu = tmpPIterRef.gu;</span>
-<span class="fc" id="L1180">            gw = tmpPIterRef.gw;</span>
-<span class="fc" id="L1181">            oldf = tmpPIterRef.oldf;</span>
-<span class="fc" id="L1182">            reltol = tmpPIterRef.reltol;</span>
-<span class="fc" id="L1183">            scxbnd = tmpPIterRef.scxbnd;</span>
-<span class="fc" id="L1184">            step = tmpPIterRef.step;</span>
-<span class="fc" id="L1185">            tol = tmpPIterRef.tol;</span>
-<span class="fc" id="L1186">            u = tmpPIterRef.u;</span>
-<span class="fc" id="L1187">            ref.alpha = tmpPIterRef.xmin;</span>
-<span class="fc" id="L1188">            xw = tmpPIterRef.xw;</span>
-
-            /* New best point ? */
-<span class="fc bfc" id="L1191" title="All 2 branches covered.">            if (ref.alpha == ualpha) {</span>
-<span class="fc" id="L1192">                ArrayMath.copy(tempgfull, newgfull);</span>
-            }
-<span class="fc" id="L1194">        }</span>
-
-        /* A successful search has been made */
-<span class="fc" id="L1197">        ref.f = fmin;</span>
-<span class="fc" id="L1198">        ArrayMath.axPlusY(ref.alpha, p, x);</span>
-<span class="fc" id="L1199">        ArrayMath.copy(newgfull, gfull);</span>
-<span class="fc" id="L1200">    }</span>
-
-<span class="fc" id="L1202">    public class getptcInitRef {</span>
-
-        public double reltol;
-        public double abstol;
-        public double u;
-        public double fu;
-        public double gu;
-        public double xmin;
-        public double fmin;
-        public double gmin;
-        public double xw;
-        public double fw;
-        public double gw;
-        public double a;
-        public double b;
-        public double oldf;
-        public double b1;
-        public double scxbnd;
-        public double e;
-        public double step;
-        public double factor;
-        public boolean braktd;
-        public double gtest1;
-        public double gtest2;
-        public double tol;
-    }
-
-    /**
-     * getptc, an algorithm for finding a steplength, called repeatedly by routines which require a
-     * step length to be computed using cubic interpolation. The parameters contain information
-     * about the interval in which a lower point is to be found and from this getptc computes a
-     * point at which the function can be evaluated by the calling program.
-     */
-    public void getptcInit(double tnytol, double eta, double rmu,
-            double xbnd, getptcInitRef ref) {
-        /* Check input parameters */
-<span class="pc bpc" id="L1238" title="3 of 6 branches missed.">        if (ref.u &lt;= 0.0 || xbnd &lt;= tnytol || ref.gu &gt; 0.0) {</span>
-<span class="nc" id="L1239">            throw new MinimizationError(&quot;Invalid inputs to getptcInit&quot;);</span>
-        }
-<span class="pc bpc" id="L1241" title="1 of 2 branches missed.">        if (xbnd &lt; ref.abstol) {</span>
-<span class="nc" id="L1242">            ref.abstol = xbnd;</span>
-        }
-<span class="fc" id="L1244">        ref.tol = ref.abstol;</span>
-
-        /* a and b define the interval of uncertainty, x and xw are points */
-        /* with lowest and second lowest function values so far obtained. */
-        /* initialize a,smin,xw at origin and corresponding values of */
-        /* function and projection of the gradient along direction of search */
-        /* at values for latest estimate at minimum. */
-<span class="fc" id="L1251">        ref.a = 0.0;</span>
-<span class="fc" id="L1252">        ref.xw = 0.0;</span>
-<span class="fc" id="L1253">        ref.xmin = 0.0;</span>
-<span class="fc" id="L1254">        ref.oldf = ref.fu;</span>
-<span class="fc" id="L1255">        ref.fmin = ref.fu;</span>
-<span class="fc" id="L1256">        ref.fw = ref.fu;</span>
-<span class="fc" id="L1257">        ref.gw = ref.gu;</span>
-<span class="fc" id="L1258">        ref.gmin = ref.gu;</span>
-<span class="fc" id="L1259">        ref.step = ref.u;</span>
-<span class="fc" id="L1260">        ref.factor = 5.0;</span>
-
-        /* The minimum has not yet been bracketed. */
-<span class="fc" id="L1263">        ref.braktd = false;</span>
-
-        /* Set up xbnd as a bound on the step to be taken. (xbnd is not computed */
-        /* explicitly but scxbnd is its scaled value.) Set the upper bound */
-        /* on the interval of uncertainty initially to xbnd + tol(xbnd). */
-<span class="fc" id="L1268">        ref.scxbnd = xbnd;</span>
-<span class="fc" id="L1269">        ref.b = ref.scxbnd + ref.reltol * Math.abs(ref.scxbnd) + ref.abstol;</span>
-<span class="fc" id="L1270">        ref.e = ref.b + ref.b;</span>
-<span class="fc" id="L1271">        ref.b1 = ref.b;</span>
-
-        /* Compute the constants required for the two convergence criteria. */
-<span class="fc" id="L1274">        ref.gtest1 = -rmu * ref.gu;</span>
-<span class="fc" id="L1275">        ref.gtest2 = -eta * ref.gu;</span>
-
-        /* If the step is too large, replace by the scaled bound (so as to */
-        /* compute the new point on the boundary). */
-<span class="fc bfc" id="L1279" title="All 2 branches covered.">        if (ref.step &gt;= ref.scxbnd) {</span>
-<span class="fc" id="L1280">            ref.step = ref.scxbnd;</span>
-            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
-<span class="fc" id="L1282">            ref.scxbnd -= (ref.reltol * Math.abs(xbnd) + ref.abstol) / (1.0 + ref.reltol);</span>
-        }
-<span class="fc" id="L1284">        ref.u = ref.step;</span>
-<span class="pc bpc" id="L1285" title="3 of 4 branches missed.">        if (Math.abs(ref.step) &lt; ref.tol &amp;&amp; ref.step &lt; 0.0) {</span>
-<span class="nc" id="L1286">            ref.u = -ref.tol;</span>
-        }
-<span class="pc bpc" id="L1288" title="3 of 4 branches missed.">        if (Math.abs(ref.step) &lt; ref.tol &amp;&amp; ref.step &gt;= 0.0) {</span>
-<span class="nc" id="L1289">            ref.u = ref.tol;</span>
-        }
-<span class="fc" id="L1291">    }</span>
-
-<span class="fc" id="L1293">    public class getptcIterRef {</span>
-
-        public double reltol;
-        public double abstol;
-        public double u;
-        public double fu;
-        public double gu;
-        public double xmin;
-        public double fmin;
-        public double gmin;
-        public double xw;
-        public double fw;
-        public double gw;
-        public double a;
-        public double b;
-        public double oldf;
-        public double b1;
-        public double scxbnd;
-        public double e;
-        public double step;
-        public double factor;
-        public boolean braktd;
-        public double gtest1;
-        public double gtest2;
-        public double tol;
-    }
-
-    public boolean getptcIter(double big, double rtsmll, double tnytol,
-            double fpresn, double xbnd, getptcIterRef ref) {
-        ConvergenceCheck:
-        {
-            /* Update a,b,xw, and xmin */
-<span class="fc bfc" id="L1325" title="All 2 branches covered.">            if (ref.fu &lt;= ref.fmin) {</span>
-                /* If function value not increased, new point becomes next */
-                /* origin and other points are scaled accordingly. */
-<span class="fc" id="L1328">                double chordu = ref.oldf - (ref.xmin + ref.u) * ref.gtest1;</span>
-<span class="pc bpc" id="L1329" title="1 of 2 branches missed.">                if (ref.fu &gt; chordu) {</span>
-                    /* The new function value does not satisfy the sufficient decrease */
-                    /* criterion. prepare to move the upper bound to this point and */
-                    /* force the interpolation scheme to either bisect the interval of */
-                    /* uncertainty or take the linear interpolation step which estimates */
-                    /* the root of f(alpha)=chord(alpha). */
-
-<span class="nc" id="L1336">                    double chordm = ref.oldf - ref.xmin * ref.gtest1;</span>
-<span class="nc" id="L1337">                    ref.gu = -ref.gmin;</span>
-<span class="nc" id="L1338">                    double denom = chordm - ref.fmin;</span>
-<span class="nc bnc" id="L1339" title="All 2 branches missed.">                    if (Math.abs(denom) &lt; 1e-15) {</span>
-<span class="nc" id="L1340">                        denom = 1e-15;</span>
-<span class="nc bnc" id="L1341" title="All 2 branches missed.">                        if (chordm - ref.fmin &lt; 0.0) {</span>
-<span class="nc" id="L1342">                            denom = -denom;</span>
-                        }
-                    }
-<span class="nc bnc" id="L1345" title="All 2 branches missed.">                    if (ref.xmin != 0.0) {</span>
-<span class="nc" id="L1346">                        ref.gu = ref.gmin * (chordu - ref.fu) / denom;</span>
-                    }
-<span class="nc" id="L1348">                    ref.fu = 0.5 * ref.u * (ref.gmin + ref.gu) + ref.fmin;</span>
-<span class="nc bnc" id="L1349" title="All 2 branches missed.">                    if (ref.fu &lt; ref.fmin) {</span>
-<span class="nc" id="L1350">                        ref.fu = ref.fmin;</span>
-                    }
-<span class="nc" id="L1352">                } else {</span>
-<span class="fc" id="L1353">                    ref.fw = ref.fmin;</span>
-<span class="fc" id="L1354">                    ref.fmin = ref.fu;</span>
-<span class="fc" id="L1355">                    ref.gw = ref.gmin;</span>
-<span class="fc" id="L1356">                    ref.gmin = ref.gu;</span>
-<span class="fc" id="L1357">                    ref.xmin += ref.u;</span>
-<span class="fc" id="L1358">                    ref.a -= ref.u;</span>
-<span class="fc" id="L1359">                    ref.b -= ref.u;</span>
-<span class="fc" id="L1360">                    ref.xw = -ref.u;</span>
-<span class="fc" id="L1361">                    ref.scxbnd -= ref.u;</span>
-<span class="fc bfc" id="L1362" title="All 2 branches covered.">                    if (ref.gu &lt;= 0.0) {</span>
-<span class="fc" id="L1363">                        ref.a = 0.0;</span>
-                    } else {
-<span class="fc" id="L1365">                        ref.b = 0.0;</span>
-<span class="fc" id="L1366">                        ref.braktd = true;</span>
-                    }
-<span class="fc" id="L1368">                    ref.tol = Math.abs(ref.xmin) * ref.reltol + ref.abstol;</span>
-<span class="fc" id="L1369">                    break ConvergenceCheck;</span>
-                }
-            }
-
-            /* If function value increased, origin remains unchanged */
-            /* but new point may now qualify as w. */
-<span class="fc bfc" id="L1375" title="All 2 branches covered.">            if (ref.u &lt; 0.0) {</span>
-<span class="fc" id="L1376">                ref.a = ref.u;</span>
-            } else {
-<span class="fc" id="L1378">                ref.b = ref.u;</span>
-<span class="fc" id="L1379">                ref.braktd = true;</span>
-            }
-<span class="fc" id="L1381">            ref.xw = ref.u;</span>
-<span class="fc" id="L1382">            ref.fw = ref.fu;</span>
-<span class="fc" id="L1383">            ref.gw = ref.gu;</span>
-        }
-
-<span class="fc" id="L1386">        double twotol = ref.tol + ref.tol;</span>
-<span class="fc" id="L1387">        double xmidpt = 0.5 * (ref.a + ref.b);</span>
-
-        /* Check termination criteria */
-<span class="fc bfc" id="L1390" title="All 2 branches covered.">        boolean convrg = (Math.abs(xmidpt) &lt;= twotol - 0.5 * (ref.b - ref.a))</span>
-<span class="pc bpc" id="L1391" title="1 of 4 branches missed.">                || (Math.abs(ref.gmin) &lt;= ref.gtest2 &amp;&amp; ref.fmin &lt; ref.oldf</span>
-<span class="pc bpc" id="L1392" title="3 of 4 branches missed.">                &amp;&amp; ((Math.abs(ref.xmin - xbnd) &gt; ref.tol) || (!ref.braktd)));</span>
-<span class="fc bfc" id="L1393" title="All 2 branches covered.">        if (convrg) {</span>
-<span class="pc bpc" id="L1394" title="1 of 2 branches missed.">            if (ref.xmin != 0.0) {</span>
-<span class="fc" id="L1395">                return false;</span>
-            }
-
-            /*
-             * If the function has not been reduced, check to see that the relative
-             * change in f(x) is consistent with the estimate of the delta-
-             * unimodality constant, tol. If the change in f(x) is larger than
-             * expected, reduce the value of tol.
-             */
-<span class="nc bnc" id="L1404" title="All 2 branches missed.">            if (Math.abs(ref.oldf - ref.fw) &lt;= fpresn) {</span>
-<span class="nc" id="L1405">                throw new MinimizationError(&quot;getptciter failed. |oldf - fw| &lt;= fpresn&quot;);</span>
-            }
-<span class="nc" id="L1407">            ref.tol = 0.1 * ref.tol;</span>
-<span class="nc bnc" id="L1408" title="All 2 branches missed.">            if (ref.tol &lt; tnytol) {</span>
-<span class="nc" id="L1409">                throw new MinimizationError(&quot;getptciter failed. tol &lt; tnytol&quot;);</span>
-            }
-<span class="nc" id="L1411">            ref.reltol = 0.1 * ref.reltol;</span>
-<span class="nc" id="L1412">            ref.abstol = 0.1 * ref.abstol;</span>
-<span class="nc" id="L1413">            twotol = 0.1 * twotol;</span>
-        }
-
-        /* Continue with the computation of a trial step length */
-<span class="fc" id="L1417">        double r = 0.0;</span>
-<span class="fc" id="L1418">        double q = 0.0;</span>
-<span class="fc" id="L1419">        double s = 0.0;</span>
-        MinimumFound:
-        {
-<span class="pc bpc" id="L1422" title="1 of 2 branches missed.">            if (Math.abs(ref.e) &gt; ref.tol) {</span>
-                /* Fit cubic through xmin and xw */
-<span class="fc" id="L1424">                r = 3.0 * (ref.fmin - ref.fw) / ref.xw + ref.gmin + ref.gw;</span>
-<span class="fc" id="L1425">                double absr = Math.abs(r);</span>
-<span class="fc" id="L1426">                q = absr;</span>
-<span class="pc bpc" id="L1427" title="2 of 4 branches missed.">                if (ref.gw != 0.0 &amp;&amp; ref.gmin != 0.0) {</span>
-                    /* Compute the square root of (r*r - gmin*gw) in a way
-                     which avoids underflow and overflow. */
-<span class="fc" id="L1430">                    double abgw = Math.abs(ref.gw);</span>
-<span class="fc" id="L1431">                    double abgmin = Math.abs(ref.gmin);</span>
-<span class="fc" id="L1432">                    s = Math.sqrt(abgmin) * Math.sqrt(abgw);</span>
-<span class="fc bfc" id="L1433" title="All 2 branches covered.">                    if (ref.gw / abgw * ref.gmin &gt; 0.0) {</span>
-<span class="pc bpc" id="L1434" title="1 of 4 branches missed.">                        if (r &gt;= s || r &lt;= -s) {</span>
-                            /* Compute the square root of r*r - s*s */
-<span class="fc" id="L1436">                            q = Math.sqrt(Math.abs(r + s)) * Math.sqrt(Math.abs(r - s));</span>
-                        } else {
-<span class="fc" id="L1438">                            r = 0.0;</span>
-<span class="fc" id="L1439">                            q = 0.0;</span>
-<span class="fc" id="L1440">                            break MinimumFound;</span>
-                        }
-                    } else {
-                        /* Compute the square root of r*r + s*s. */
-<span class="fc" id="L1444">                        double sumsq = 1.0;</span>
-<span class="fc" id="L1445">                        double p = 0.0;</span>
-                        double scale;
-<span class="fc bfc" id="L1447" title="All 2 branches covered.">                        if (absr &gt;= s) {</span>
-                            /* There is a possibility of underflow. */
-<span class="pc bpc" id="L1449" title="1 of 2 branches missed.">                            if (absr &gt; rtsmll) {</span>
-<span class="fc" id="L1450">                                p = absr * rtsmll;</span>
-                            }
-<span class="pc bpc" id="L1452" title="1 of 2 branches missed.">                            if (s &gt;= p) {</span>
-<span class="fc" id="L1453">                                double value = s / absr;</span>
-<span class="fc" id="L1454">                                sumsq = 1.0 + value * value;</span>
-                            }
-<span class="fc" id="L1456">                            scale = absr;</span>
-                        } else {
-                            /* There is a possibility of overflow. */
-<span class="pc bpc" id="L1459" title="1 of 2 branches missed.">                            if (s &gt; rtsmll) {</span>
-<span class="fc" id="L1460">                                p = s * rtsmll;</span>
-                            }
-<span class="pc bpc" id="L1462" title="1 of 2 branches missed.">                            if (absr &gt;= p) {</span>
-<span class="fc" id="L1463">                                double value = absr / s;</span>
-<span class="fc" id="L1464">                                sumsq = 1.0 + value * value;</span>
-                            }
-<span class="fc" id="L1466">                            scale = s;</span>
-                        }
-<span class="fc" id="L1468">                        sumsq = Math.sqrt(sumsq);</span>
-<span class="fc" id="L1469">                        q = big;</span>
-<span class="pc bpc" id="L1470" title="1 of 2 branches missed.">                        if (scale &lt; big / sumsq) {</span>
-<span class="fc" id="L1471">                            q = scale * sumsq;</span>
-                        }
-                    }
-                }
-
-                /* Compute the minimum of fitted cubic */
-<span class="fc bfc" id="L1477" title="All 2 branches covered.">                if (ref.xw &lt; 0.0) {</span>
-<span class="fc" id="L1478">                    q = -q;</span>
-                }
-<span class="fc" id="L1480">                s = ref.xw * (ref.gmin - r - q);</span>
-<span class="fc" id="L1481">                q = ref.gw - ref.gmin + q + q;</span>
-<span class="fc bfc" id="L1482" title="All 2 branches covered.">                if (q &gt; 0.0) {</span>
-<span class="fc" id="L1483">                    s = -s;</span>
-                }
-<span class="fc bfc" id="L1485" title="All 2 branches covered.">                if (q &lt;= 0.0) {</span>
-<span class="fc" id="L1486">                    q = -q;</span>
-                }
-<span class="fc" id="L1488">                r = ref.e;</span>
-<span class="fc bfc" id="L1489" title="All 4 branches covered.">                if (ref.b1 != ref.step || ref.braktd) {</span>
-<span class="fc" id="L1490">                    ref.e = ref.step;</span>
-                }
-            }
-        }
-
-        /* Construct an artificial bound on the estimated steplength */
-<span class="fc" id="L1496">        double a1 = ref.a;</span>
-<span class="fc" id="L1497">        ref.b1 = ref.b;</span>
-<span class="fc" id="L1498">        ref.step = xmidpt;</span>
-<span class="pc bpc" id="L1499" title="2 of 10 branches missed.">        if ((!ref.braktd) || ((ref.a == 0.0 &amp;&amp; ref.xw &lt; 0.0) || (ref.b == 0.0 &amp;&amp; ref.xw &gt; 0.0))) {</span>
-<span class="pc bpc" id="L1500" title="1 of 2 branches missed.">            if (ref.braktd) {</span>
-                /* If the minimum is not bracketed by 0 and xw the step must lie
-                 within (a1,b1). */
-<span class="nc" id="L1503">                double d1 = ref.xw;</span>
-<span class="nc" id="L1504">                double d2 = ref.a;</span>
-<span class="nc bnc" id="L1505" title="All 2 branches missed.">                if (ref.a == 0.0) {</span>
-<span class="nc" id="L1506">                    d2 = ref.b;</span>
-                }
-                /* This line might be : */
-                /* if (*a == 0.0) d2 = *e */
-<span class="nc" id="L1510">                ref.u = -d1 / d2;</span>
-<span class="nc" id="L1511">                ref.step = 5.0 * d2 * (0.1 + 1.0 / ref.u) / 11.0;</span>
-<span class="nc bnc" id="L1512" title="All 2 branches missed.">                if (ref.u &lt; 1.0) {</span>
-<span class="nc" id="L1513">                    ref.step = 0.5 * d2 * Math.sqrt(ref.u);</span>
-                }
-<span class="nc" id="L1515">            } else {</span>
-<span class="fc" id="L1516">                ref.step = -ref.factor * ref.xw;</span>
-<span class="fc bfc" id="L1517" title="All 2 branches covered.">                if (ref.step &gt; ref.scxbnd) {</span>
-<span class="fc" id="L1518">                    ref.step = ref.scxbnd;</span>
-                }
-<span class="fc bfc" id="L1520" title="All 2 branches covered.">                if (ref.step != ref.scxbnd) {</span>
-<span class="fc" id="L1521">                    ref.factor = 5.0 * ref.factor;</span>
-                }
-            }
-            /* If the minimum is bracketed by 0 and xw the step must lie within (a,b) */
-<span class="pc bpc" id="L1525" title="1 of 2 branches missed.">            if (ref.step &lt;= 0.0) {</span>
-<span class="nc" id="L1526">                a1 = ref.step;</span>
-            }
-<span class="pc bpc" id="L1528" title="1 of 2 branches missed.">            if (ref.step &gt; 0.0) {</span>
-<span class="fc" id="L1529">                ref.b1 = ref.step;</span>
-            }
-        }
-
-        /*
-         * Reject the step obtained by interpolation if it lies outside the
-         * required interval or it is greater than half the step obtained
-         * during the last-but-one iteration.
-         */
-<span class="pc bpc" id="L1538" title="1 of 6 branches missed.">        if (Math.abs(s) &lt;= Math.abs(0.5 * q * r) || s &lt;= q * a1 || s &gt;= q * ref.b1) {</span>
-<span class="fc" id="L1539">            ref.e = ref.b - ref.a;</span>
-        } else {
-            /* A cubic interpolation step */
-<span class="nc" id="L1542">            ref.step = s / q;</span>
-
-            /* The function must not be evaluated too close to a or b. */
-<span class="nc bnc" id="L1545" title="All 4 branches missed.">            if (ref.step - ref.a &lt; twotol || ref.b - ref.step &lt; twotol) {</span>
-<span class="nc bnc" id="L1546" title="All 2 branches missed.">                if (xmidpt &lt;= 0.0) {</span>
-<span class="nc" id="L1547">                    ref.step = -ref.tol;</span>
-                } else {
-<span class="nc" id="L1549">                    ref.step = ref.tol;</span>
-                }
-            }
-        }
-
-        /* If the step is too large, replace by the scaled bound (so as to */
-        /* compute the new point on the boundary). */
-<span class="fc bfc" id="L1556" title="All 2 branches covered.">        if (ref.step &gt;= ref.scxbnd) {</span>
-<span class="fc" id="L1557">            ref.step = ref.scxbnd;</span>
-            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
-<span class="fc" id="L1559">            ref.scxbnd -= (ref.reltol * Math.abs(xbnd) + ref.abstol) / (1.0 + ref.reltol);</span>
-        }
-<span class="fc" id="L1561">        ref.u = ref.step;</span>
-<span class="pc bpc" id="L1562" title="3 of 4 branches missed.">        if (Math.abs(ref.step) &lt; ref.tol &amp;&amp; ref.step &lt; 0.0) {</span>
-<span class="nc" id="L1563">            ref.u = -ref.tol;</span>
-        }
-<span class="pc bpc" id="L1565" title="3 of 4 branches missed.">        if (Math.abs(ref.step) &lt; ref.tol &amp;&amp; ref.step &gt;= 0.0) {</span>
-<span class="nc" id="L1566">            ref.u = ref.tol;</span>
-        }
-        
-<span class="fc" id="L1569">        return true;</span>
+<span class="nc" id="L1116"></span>
+<span class="nc" id="L1117">            // Function evaluation</span>
+<span class="fc" id="L1118">            unscalex(n, temp, xscale, xoffset);</span>
+<span class="fc" id="L1119">            ArrayMath.clip(temp, low, up);</span>
+<span class="pc" id="L1120">            double fu = functionEvaluator.evaluate(temp, tempgfull) * fscale;</span>
+<span class="nc" id="L1121"></span>
+<span class="fc" id="L1122">            ArrayMath.copy(tempgfull, temp);</span>
+<span class="pc" id="L1123">            scaleg(n, temp, xscale, fscale);</span>
+<span class="pc" id="L1124">            double gu = ArrayMath.dotProduct(temp, p);</span>
+<span class="nc" id="L1125"></span>
+<span class="fc" id="L1126">            requiresFurtherEvaluation = getPointCubic.iterate(big, rtsmll, tnytol, fpresn, xbnd, fu, gu);</span>
+<span class="nc" id="L1127"></span>
+<span class="nc" id="L1128">            // New best point</span>
+<span class="pc bfc" id="L1129" title="All 2 branches covered.">            if (getPointCubic.xmin() == ualpha) {</span>
+<span class="pc" id="L1130">                ArrayMath.copy(tempgfull, newgfull);</span>
+<span class="nc" id="L1131">            }</span>
+<span class="pc" id="L1132">        } </span>
+<span class="nc" id="L1133"></span>
+<span class="pc" id="L1134">        double[] newX = new double[x.length];</span>
+<span class="fc" id="L1135">        ArrayMath.copy(x, newX);</span>
+<span class="fc" id="L1136">        ArrayMath.axPlusY(getPointCubic.xmin(), p, newX);</span>
+<span class="fc" id="L1137">        return new LinearSearchResult(getPointCubic.xmin(), newX, getPointCubic.fmin(), newgfull);</span>
     }
 
 }

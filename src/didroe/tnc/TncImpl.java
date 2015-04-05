@@ -434,13 +434,13 @@ public class TncImpl {
                 alpha = initialStep(ref.f, fmin / fscale, oldgtp, spe);
 
                 /* Perform the linear search */
-                linearSearchRef tmpLinSRef = new linearSearchRef();
-                tmpLinSRef.alpha = alpha;
-                tmpLinSRef.f = ref.f;
-                linearSearch(n, low, up, xscale, xoffset, fscale, pivot,
-                        eta, ftol, spe, pk, x, gfull, maxnfeval, tmpLinSRef);
-                alpha = tmpLinSRef.alpha;
-                ref.f = tmpLinSRef.f;
+                LinearSearchResult lsResult = linearSearch(n, low, up, xscale, xoffset, fscale, pivot,
+                        eta, ftol, spe, pk, x, ref.f, alpha, gfull);
+                alpha = lsResult.alpha();
+                ref.f = lsResult.f();
+                ArrayMath.copy(lsResult.g(), gfull);
+                ArrayMath.copy(lsResult.x(), x);
+
 
                 /* If we went up to the maximum unconstrained step, increase it */
                 if (alpha >= 0.9 * ustpmax) {
@@ -1032,20 +1032,45 @@ public class TncImpl {
         }
     }
 
-    public class linearSearchRef {
+    class LinearSearchResult {
+        private final double alpha;
+        private final double[] x;
+        private final double f;
+        private final double[] g;
+        
+        public LinearSearchResult(double alpha, double[] x, double f, double[] g) {
+            this.alpha = alpha;
+            this.x = x;
+            this.f = f;
+            this.g = g;
+        }
+        
+        public double alpha() {
+            return alpha;
+        }
+        
+        public double[] x() {
+            return x;
+        }
+        
+        public double f() {
+            return f;
+        }
 
-        public double f;
-        public double alpha;
+        public double[] g() {
+            return g;
+        }
     }
 
+    
     /**
      * Line search algorithm of gill and murray
      */
-    public void linearSearch(int n, double[] low,
+    public LinearSearchResult linearSearch(int n, double[] low,
             double[] up, double[] xscale, double[] xoffset, double fscale,
             int[] pivot, double eta, double ftol, double xbnd, double[] p,
-            double[] x, double gfull[], int maxnfeval, linearSearchRef ref) {
-        int maxlsit = 64;
+            double[] x, double f, double alpha, double gfull[]) {
+        final int MAX_ITERATIONS = 64;
 
         double[] temp = new double[n];
         double[] tempgfull = new double[n];
@@ -1059,500 +1084,57 @@ public class TncImpl {
         project(n, temp, pivot);
         double xnorm = ArrayMath.euclidianNorm(temp);
 
-        /* Compute the absolute and relative tolerances for the linear search */
+        // Absolute and relative tolerances for the linear search
         double rteps = Math.sqrt(DBL_EPSILON);
         double pe = ArrayMath.euclidianNorm(p) + DBL_EPSILON;
         double reltol = rteps * (xnorm + 1.0) / pe;
-        double abstol = -DBL_EPSILON * (1.0 + Math.abs(ref.f)) / (initGu - DBL_EPSILON);
+        double abstol = -DBL_EPSILON * (1.0 + Math.abs(f)) / (initGu - DBL_EPSILON);
 
-        /* Compute the smallest allowable spacing between points in the linear
-         search */
+        // Smallest allowable spacing between points in the linear search
         double tnytol = DBL_EPSILON * (xnorm + 1.0) / pe;
 
         double rtsmll = DBL_EPSILON;
         double big = 1.0 / (DBL_EPSILON * DBL_EPSILON);
         int itcnt = 0;
 
-        /* Set the estimated relative precision in f(x). */
+        // Estimated relative precision in f(x)
         double fpresn = ftol;
 
-        double u = ref.alpha;
-        double fmin = ref.f;
-        double rmu = 1e-4;
-
-        /* Setup */
-        getptcInitRef tmpPInitRef = new getptcInitRef();
-        tmpPInitRef.abstol = abstol;
-        tmpPInitRef.fmin = fmin;
-        tmpPInitRef.reltol = reltol;
-        tmpPInitRef.u = u;
-        tmpPInitRef.xmin = ref.alpha;
-        getptcInit(tnytol, eta, rmu, xbnd, ref.f, initGu, tmpPInitRef);
-        double a = tmpPInitRef.a;
-        abstol = tmpPInitRef.abstol;
-        double b = tmpPInitRef.b;
-        double b1 = tmpPInitRef.b1;
-        boolean braktd = tmpPInitRef.braktd;
-        double e = tmpPInitRef.e;
-        double factor = tmpPInitRef.factor;
-        fmin = tmpPInitRef.fmin;
-        double fw = tmpPInitRef.fw;
-        double gmin = tmpPInitRef.gmin;
-        double gtest1 = tmpPInitRef.gtest1;
-        double gtest2 = tmpPInitRef.gtest2;
-        double gw = tmpPInitRef.gw;
-        double oldf = tmpPInitRef.oldf;
-        reltol = tmpPInitRef.reltol;
-        double scxbnd = tmpPInitRef.scxbnd;
-        double step = tmpPInitRef.step;
-        double tol = tmpPInitRef.tol;
-        u = tmpPInitRef.u;
-        ref.alpha = tmpPInitRef.xmin;
-        double xw = tmpPInitRef.xw;
+        GetPointCubic getPointCubic = new GetPointCubic(reltol, abstol, tnytol, eta, 1e-4, xbnd, alpha, f, initGu);
 
         boolean requiresFurtherEvaluation = true;
         while (requiresFurtherEvaluation) {
-            if (itcnt == maxlsit) {
+            if (itcnt == MAX_ITERATIONS) {
                 throw new MinimizationError("Linear search failed. Max iterations reached");
             }
             itcnt++;
 
-            double ualpha = ref.alpha + u;
+            double ualpha = getPointCubic.xmin() + getPointCubic.u();
             for (int i = 0; i < n; i++) {
                 temp[i] = x[i] + ualpha * p[i];
             }
 
-            /* Function evaluation */
+            // Function evaluation
             unscalex(n, temp, xscale, xoffset);
             ArrayMath.clip(temp, low, up);
-
             double fu = functionEvaluator.evaluate(temp, tempgfull) * fscale;
 
             ArrayMath.copy(tempgfull, temp);
             scaleg(n, temp, xscale, fscale);
             double gu = ArrayMath.dotProduct(temp, p);
 
-            getptcIterRef tmpPIterRef = new getptcIterRef();
-            tmpPIterRef.a = a;
-            tmpPIterRef.abstol = abstol;
-            tmpPIterRef.b = b;
-            tmpPIterRef.b1 = b1;
-            tmpPIterRef.braktd = braktd;
-            tmpPIterRef.e = e;
-            tmpPIterRef.factor = factor;
-            tmpPIterRef.fmin = fmin;
-            tmpPIterRef.fw = fw;
-            tmpPIterRef.gmin = gmin;
-            tmpPIterRef.gtest1 = gtest1;
-            tmpPIterRef.gtest2 = gtest2;
-            tmpPIterRef.gw = gw;
-            tmpPIterRef.oldf = oldf;
-            tmpPIterRef.reltol = reltol;
-            tmpPIterRef.scxbnd = scxbnd;
-            tmpPIterRef.step = step;
-            tmpPIterRef.tol = tol;
-            tmpPIterRef.u = u;
-            tmpPIterRef.xmin = ref.alpha;
-            tmpPIterRef.xw = xw;
-            requiresFurtherEvaluation = getptcIter(big, rtsmll, tnytol, fpresn, xbnd, fu, gu, tmpPIterRef);
-            a = tmpPIterRef.a;
-            abstol = tmpPIterRef.abstol;
-            b = tmpPIterRef.b;
-            b1 = tmpPIterRef.b1;
-            braktd = tmpPIterRef.braktd;
-            e = tmpPIterRef.e;
-            factor = tmpPIterRef.factor;
-            fmin = tmpPIterRef.fmin;
-            fw = tmpPIterRef.fw;
-            gmin = tmpPIterRef.gmin;
-            gtest1 = tmpPIterRef.gtest1;
-            gtest2 = tmpPIterRef.gtest2;
-            gw = tmpPIterRef.gw;
-            oldf = tmpPIterRef.oldf;
-            reltol = tmpPIterRef.reltol;
-            scxbnd = tmpPIterRef.scxbnd;
-            step = tmpPIterRef.step;
-            tol = tmpPIterRef.tol;
-            u = tmpPIterRef.u;
-            ref.alpha = tmpPIterRef.xmin;
-            xw = tmpPIterRef.xw;
+            requiresFurtherEvaluation = getPointCubic.iterate(big, rtsmll, tnytol, fpresn, xbnd, fu, gu);
 
-            /* New best point ? */
-            if (ref.alpha == ualpha) {
+            // New best point
+            if (getPointCubic.xmin() == ualpha) {
                 ArrayMath.copy(tempgfull, newgfull);
             }
-        }
+        } 
 
-        /* A successful search has been made */
-        ref.f = fmin;
-        ArrayMath.axPlusY(ref.alpha, p, x);
-        ArrayMath.copy(newgfull, gfull);
-    }
-
-    public class getptcInitRef {
-
-        public double reltol;
-        public double abstol;
-        public double u;
-        public double xmin;
-        public double fmin;
-        public double gmin;
-        public double xw;
-        public double fw;
-        public double gw;
-        public double a;
-        public double b;
-        public double oldf;
-        public double b1;
-        public double scxbnd;
-        public double e;
-        public double step;
-        public double factor;
-        public boolean braktd;
-        public double gtest1;
-        public double gtest2;
-        public double tol;
-    }
-
-    /**
-     * getptc, an algorithm for finding a steplength, called repeatedly by routines which require a
-     * step length to be computed using cubic interpolation. The parameters contain information
-     * about the interval in which a lower point is to be found and from this getptc computes a
-     * point at which the function can be evaluated by the calling program.
-     */
-    public void getptcInit(double tnytol, double eta, double rmu,
-            double xbnd, double fu, double gu, getptcInitRef ref) {
-        /* Check input parameters */
-        if (ref.u <= 0.0 || xbnd <= tnytol || gu > 0.0) {
-            throw new MinimizationError("Invalid inputs to getptcInit");
-        }
-        if (xbnd < ref.abstol) {
-            ref.abstol = xbnd;
-        }
-        ref.tol = ref.abstol;
-
-        /* a and b define the interval of uncertainty, x and xw are points */
-        /* with lowest and second lowest function values so far obtained. */
-        /* initialize a,smin,xw at origin and corresponding values of */
-        /* function and projection of the gradient along direction of search */
-        /* at values for latest estimate at minimum. */
-        ref.a = 0.0;
-        ref.xw = 0.0;
-        ref.xmin = 0.0;
-        ref.oldf = fu;
-        ref.fmin = fu;
-        ref.fw = fu;
-        ref.gw = gu;
-        ref.gmin = gu;
-        ref.step = ref.u;
-        ref.factor = 5.0;
-
-        /* The minimum has not yet been bracketed. */
-        ref.braktd = false;
-
-        /* Set up xbnd as a bound on the step to be taken. (xbnd is not computed */
-        /* explicitly but scxbnd is its scaled value.) Set the upper bound */
-        /* on the interval of uncertainty initially to xbnd + tol(xbnd). */
-        ref.scxbnd = xbnd;
-        ref.b = ref.scxbnd + ref.reltol * Math.abs(ref.scxbnd) + ref.abstol;
-        ref.e = ref.b + ref.b;
-        ref.b1 = ref.b;
-
-        /* Compute the constants required for the two convergence criteria. */
-        ref.gtest1 = -rmu * gu;
-        ref.gtest2 = -eta * gu;
-
-        /* If the step is too large, replace by the scaled bound (so as to */
-        /* compute the new point on the boundary). */
-        if (ref.step >= ref.scxbnd) {
-            ref.step = ref.scxbnd;
-            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
-            ref.scxbnd -= (ref.reltol * Math.abs(xbnd) + ref.abstol) / (1.0 + ref.reltol);
-        }
-        ref.u = ref.step;
-        if (Math.abs(ref.step) < ref.tol && ref.step < 0.0) {
-            ref.u = -ref.tol;
-        }
-        if (Math.abs(ref.step) < ref.tol && ref.step >= 0.0) {
-            ref.u = ref.tol;
-        }
-    }
-
-    public class getptcIterRef {
-
-        public double reltol;
-        public double abstol;
-        public double u;
-        public double xmin;
-        public double fmin;
-        public double gmin;
-        public double xw;
-        public double fw;
-        public double gw;
-        public double a;
-        public double b;
-        public double oldf;
-        public double b1;
-        public double scxbnd;
-        public double e;
-        public double step;
-        public double factor;
-        public boolean braktd;
-        public double gtest1;
-        public double gtest2;
-        public double tol;
-    }
-
-    public boolean getptcIter(double big, double rtsmll, double tnytol,
-            double fpresn, double xbnd, double fu, double gu, getptcIterRef ref) {
-        ConvergenceCheck:
-        {
-            /* Update a,b,xw, and xmin */
-            if (fu <= ref.fmin) {
-                /* If function value not increased, new point becomes next */
-                /* origin and other points are scaled accordingly. */
-                double chordu = ref.oldf - (ref.xmin + ref.u) * ref.gtest1;
-                if (fu > chordu) {
-                    /* The new function value does not satisfy the sufficient decrease */
-                    /* criterion. prepare to move the upper bound to this point and */
-                    /* force the interpolation scheme to either bisect the interval of */
-                    /* uncertainty or take the linear interpolation step which estimates */
-                    /* the root of f(alpha)=chord(alpha). */
-
-                    double chordm = ref.oldf - ref.xmin * ref.gtest1;
-                    gu = -ref.gmin;
-                    double denom = chordm - ref.fmin;
-                    if (Math.abs(denom) < 1e-15) {
-                        denom = 1e-15;
-                        if (chordm - ref.fmin < 0.0) {
-                            denom = -denom;
-                        }
-                    }
-                    if (ref.xmin != 0.0) {
-                        gu = ref.gmin * (chordu - fu) / denom;
-                    }
-                    fu = 0.5 * ref.u * (ref.gmin + gu) + ref.fmin;
-                    if (fu < ref.fmin) {
-                        fu = ref.fmin;
-                    }
-                } else {
-                    ref.fw = ref.fmin;
-                    ref.fmin = fu;
-                    ref.gw = ref.gmin;
-                    ref.gmin = gu;
-                    ref.xmin += ref.u;
-                    ref.a -= ref.u;
-                    ref.b -= ref.u;
-                    ref.xw = -ref.u;
-                    ref.scxbnd -= ref.u;
-                    if (gu <= 0.0) {
-                        ref.a = 0.0;
-                    } else {
-                        ref.b = 0.0;
-                        ref.braktd = true;
-                    }
-                    ref.tol = Math.abs(ref.xmin) * ref.reltol + ref.abstol;
-                    break ConvergenceCheck;
-                }
-            }
-
-            /* If function value increased, origin remains unchanged */
-            /* but new point may now qualify as w. */
-            if (ref.u < 0.0) {
-                ref.a = ref.u;
-            } else {
-                ref.b = ref.u;
-                ref.braktd = true;
-            }
-            ref.xw = ref.u;
-            ref.fw = fu;
-            ref.gw = gu;
-        }
-
-        double twotol = ref.tol + ref.tol;
-        double xmidpt = 0.5 * (ref.a + ref.b);
-
-        /* Check termination criteria */
-        boolean convrg = (Math.abs(xmidpt) <= twotol - 0.5 * (ref.b - ref.a))
-                || (Math.abs(ref.gmin) <= ref.gtest2 && ref.fmin < ref.oldf
-                && ((Math.abs(ref.xmin - xbnd) > ref.tol) || (!ref.braktd)));
-        if (convrg) {
-            if (ref.xmin != 0.0) {
-                return false;
-            }
-
-            /*
-             * If the function has not been reduced, check to see that the relative
-             * change in f(x) is consistent with the estimate of the delta-
-             * unimodality constant, tol. If the change in f(x) is larger than
-             * expected, reduce the value of tol.
-             */
-            if (Math.abs(ref.oldf - ref.fw) <= fpresn) {
-                throw new MinimizationError("getptciter failed. |oldf - fw| <= fpresn");
-            }
-            ref.tol = 0.1 * ref.tol;
-            if (ref.tol < tnytol) {
-                throw new MinimizationError("getptciter failed. tol < tnytol");
-            }
-            ref.reltol = 0.1 * ref.reltol;
-            ref.abstol = 0.1 * ref.abstol;
-            twotol = 0.1 * twotol;
-        }
-
-        /* Continue with the computation of a trial step length */
-        double r = 0.0;
-        double q = 0.0;
-        double s = 0.0;
-        MinimumFound:
-        {
-            if (Math.abs(ref.e) > ref.tol) {
-                /* Fit cubic through xmin and xw */
-                r = 3.0 * (ref.fmin - ref.fw) / ref.xw + ref.gmin + ref.gw;
-                double absr = Math.abs(r);
-                q = absr;
-                if (ref.gw != 0.0 && ref.gmin != 0.0) {
-                    /* Compute the square root of (r*r - gmin*gw) in a way
-                     which avoids underflow and overflow. */
-                    double abgw = Math.abs(ref.gw);
-                    double abgmin = Math.abs(ref.gmin);
-                    s = Math.sqrt(abgmin) * Math.sqrt(abgw);
-                    if (ref.gw / abgw * ref.gmin > 0.0) {
-                        if (r >= s || r <= -s) {
-                            /* Compute the square root of r*r - s*s */
-                            q = Math.sqrt(Math.abs(r + s)) * Math.sqrt(Math.abs(r - s));
-                        } else {
-                            r = 0.0;
-                            q = 0.0;
-                            break MinimumFound;
-                        }
-                    } else {
-                        /* Compute the square root of r*r + s*s. */
-                        double sumsq = 1.0;
-                        double p = 0.0;
-                        double scale;
-                        if (absr >= s) {
-                            /* There is a possibility of underflow. */
-                            if (absr > rtsmll) {
-                                p = absr * rtsmll;
-                            }
-                            if (s >= p) {
-                                double value = s / absr;
-                                sumsq = 1.0 + value * value;
-                            }
-                            scale = absr;
-                        } else {
-                            /* There is a possibility of overflow. */
-                            if (s > rtsmll) {
-                                p = s * rtsmll;
-                            }
-                            if (absr >= p) {
-                                double value = absr / s;
-                                sumsq = 1.0 + value * value;
-                            }
-                            scale = s;
-                        }
-                        sumsq = Math.sqrt(sumsq);
-                        q = big;
-                        if (scale < big / sumsq) {
-                            q = scale * sumsq;
-                        }
-                    }
-                }
-
-                /* Compute the minimum of fitted cubic */
-                if (ref.xw < 0.0) {
-                    q = -q;
-                }
-                s = ref.xw * (ref.gmin - r - q);
-                q = ref.gw - ref.gmin + q + q;
-                if (q > 0.0) {
-                    s = -s;
-                }
-                if (q <= 0.0) {
-                    q = -q;
-                }
-                r = ref.e;
-                if (ref.b1 != ref.step || ref.braktd) {
-                    ref.e = ref.step;
-                }
-            }
-        }
-
-        /* Construct an artificial bound on the estimated steplength */
-        double a1 = ref.a;
-        ref.b1 = ref.b;
-        ref.step = xmidpt;
-        if ((!ref.braktd) || ((ref.a == 0.0 && ref.xw < 0.0) || (ref.b == 0.0 && ref.xw > 0.0))) {
-            if (ref.braktd) {
-                /* If the minimum is not bracketed by 0 and xw the step must lie
-                 within (a1,b1). */
-                double d1 = ref.xw;
-                double d2 = ref.a;
-                if (ref.a == 0.0) {
-                    d2 = ref.b;
-                }
-                /* This line might be : */
-                /* if (*a == 0.0) d2 = *e */
-                ref.u = -d1 / d2;
-                ref.step = 5.0 * d2 * (0.1 + 1.0 / ref.u) / 11.0;
-                if (ref.u < 1.0) {
-                    ref.step = 0.5 * d2 * Math.sqrt(ref.u);
-                }
-            } else {
-                ref.step = -ref.factor * ref.xw;
-                if (ref.step > ref.scxbnd) {
-                    ref.step = ref.scxbnd;
-                }
-                if (ref.step != ref.scxbnd) {
-                    ref.factor = 5.0 * ref.factor;
-                }
-            }
-            /* If the minimum is bracketed by 0 and xw the step must lie within (a,b) */
-            if (ref.step <= 0.0) {
-                a1 = ref.step;
-            }
-            if (ref.step > 0.0) {
-                ref.b1 = ref.step;
-            }
-        }
-
-        /*
-         * Reject the step obtained by interpolation if it lies outside the
-         * required interval or it is greater than half the step obtained
-         * during the last-but-one iteration.
-         */
-        if (Math.abs(s) <= Math.abs(0.5 * q * r) || s <= q * a1 || s >= q * ref.b1) {
-            ref.e = ref.b - ref.a;
-        } else {
-            /* A cubic interpolation step */
-            ref.step = s / q;
-
-            /* The function must not be evaluated too close to a or b. */
-            if (ref.step - ref.a < twotol || ref.b - ref.step < twotol) {
-                if (xmidpt <= 0.0) {
-                    ref.step = -ref.tol;
-                } else {
-                    ref.step = ref.tol;
-                }
-            }
-        }
-
-        /* If the step is too large, replace by the scaled bound (so as to */
-        /* compute the new point on the boundary). */
-        if (ref.step >= ref.scxbnd) {
-            ref.step = ref.scxbnd;
-            /* Move sxbd to the left so that sbnd + tol(xbnd) = xbnd. */
-            ref.scxbnd -= (ref.reltol * Math.abs(xbnd) + ref.abstol) / (1.0 + ref.reltol);
-        }
-        ref.u = ref.step;
-        if (Math.abs(ref.step) < ref.tol && ref.step < 0.0) {
-            ref.u = -ref.tol;
-        }
-        if (Math.abs(ref.step) < ref.tol && ref.step >= 0.0) {
-            ref.u = ref.tol;
-        }
-        
-        return true;
+        double[] newX = new double[x.length];
+        ArrayMath.copy(x, newX);
+        ArrayMath.axPlusY(getPointCubic.xmin(), p, newX);
+        return new LinearSearchResult(getPointCubic.xmin(), newX, getPointCubic.fmin(), newgfull);
     }
 
 }
